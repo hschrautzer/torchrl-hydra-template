@@ -1,0 +1,14 @@
+name: ALE/Breakout-v5
+backend: gymnasium
+
+# Observation / action metadata (after preprocessing)
+obs_shape: [4, 84, 84]    # frame_stack × H × W
+num_actions: 4
+
+# Atari preprocessing pipeline
+frame_stack: 4
+grayscale: true
+resize: [84, 84]
+clip_rewards: true          # sign(reward) clipping (standard for Atari DQN)
+normalize_obs: false
+num_envs: 1

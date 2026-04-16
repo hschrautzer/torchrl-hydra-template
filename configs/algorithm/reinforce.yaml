@@ -1,0 +1,17 @@
+_target_: src.algorithms.reinforce.ReinforceAlgorithm
+
+# Data collection
+total_frames: 500_000      # total environment frames for the entire run
+
+# Optimization
+lr: 1e-3
+gamma: 0.99
+max_grad_norm: 0.5
+normalize_returns: true    # normalize MC returns before computing loss
+
+# Network architecture (embedded — no separate config group)
+network:
+  architecture: mlp
+  hidden_sizes: [64, 64]
+  activation: tanh
+  layer_norm: false

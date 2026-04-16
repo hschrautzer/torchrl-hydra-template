@@ -1,0 +1,30 @@
+_target_: src.algorithms.dqn.DQNAlgorithm
+
+# Data collection
+frames_per_batch: 200      # frames added to replay buffer per collector step
+total_frames: 500_000      # total environment frames for the entire run
+init_random_frames: 5_000  # warm-up: collect this many frames with random policy before training
+
+# Replay buffer
+replay_buffer:
+  capacity: 100_000
+  batch_size: 128
+
+# Optimization
+lr: 1e-4
+gamma: 0.99
+max_grad_norm: 10.0
+target_update_every: 1_000   # hard-copy to target network every N frames
+
+# Exploration (epsilon-greedy)
+eps_start: 1.0
+eps_end: 0.05
+eps_annealing_frames: 100_000
+
+# Network architecture (embedded — no separate config group)
+# Default: MLP for CartPole; override in experiment for Atari CNN
+network:
+  architecture: mlp
+  hidden_sizes: [128, 128]
+  activation: relu
+  layer_norm: false

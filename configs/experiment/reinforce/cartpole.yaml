@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - override /algorithm: reinforce
+  - override /environment: cartpole
+  - override /logger: []
+  - _self_
+
+trainer:
+  max_steps: 500_000
+  seed: 42
+
+algorithm:
+  total_frames: 500_000
+  lr: 1e-3
