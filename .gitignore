@@ -1,7 +1,9 @@
-# Hydra outputs
+# Hydra outputs & logs (train, eval, wandb, tensorboard all under logs/)
 logs/
 outputs/
-multirun/
+
+# Weights & Biases (root-level fallback)
+wandb/
 
 # Python
 __pycache__/

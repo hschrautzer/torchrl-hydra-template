@@ -49,7 +49,9 @@ class DQNConfig:
     lr: float = 1e-4                   # Adam learning rate
     gamma: float = 0.99                # discount factor
     max_grad_norm: float = 10.0        # gradient clipping threshold
-    target_update_every: int = 1_000   # hard-copy target network every N environment frames
+    updates_per_step: int = 1           # gradient updates per collector step
+    target_update_every: int = 1_000   # hard-copy target network every N environment frames (ignored when tau > 0)
+    tau: float = 0.0                   # soft update coefficient; 0 means hard update
 
     # Exploration — epsilon-greedy annealing schedule
     eps_start: float = 1.0             # initial exploration probability
@@ -69,10 +71,10 @@ class DQNAlgorithm(BaseAlgorithm):
     """DQN with double-DQN target network and epsilon-greedy exploration."""
 
     def setup(self, env: EnvBase) -> None:
-        from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
+        from torchrl.data import LazyMemmapStorage, LazyTensorStorage, TensorDictReplayBuffer
         from torchrl.data.replay_buffers.samplers import RandomSampler
         from torchrl.modules import EGreedyModule, QValueActor
-        from torchrl.objectives import DQNLoss, HardUpdate
+        from torchrl.objectives import DQNLoss, HardUpdate, SoftUpdate
 
         self.acfg = self._build_acfg(DQNConfig())
         acfg = self.acfg
@@ -117,16 +119,25 @@ class DQNAlgorithm(BaseAlgorithm):
         ).to(self.device)
         self.loss_module.make_value_estimator(gamma=float(acfg.gamma))
 
-        # Hard-copy target network update
-        self.target_updater = HardUpdate(
-            self.loss_module,
-            value_network_update_interval=int(acfg.target_update_every),
-        )
+        # Target network update (soft or hard)
+        tau = float(acfg.tau)
+        if tau > 0:
+            self.target_updater = SoftUpdate(self.loss_module, tau=tau)
+        else:
+            self.target_updater = HardUpdate(
+                self.loss_module,
+                value_network_update_interval=int(acfg.target_update_every),
+            )
 
         # --- Replay buffer ---
         buf_cfg = acfg.replay_buffer
+        storage_type = str(buf_cfg.get("storage", "tensor"))
+        if storage_type == "mmap":
+            storage = LazyMemmapStorage(int(buf_cfg.capacity))
+        else:
+            storage = LazyTensorStorage(int(buf_cfg.capacity), device=self.device)
         self.replay_buffer = TensorDictReplayBuffer(
-            storage=LazyMemmapStorage(int(buf_cfg.capacity)),
+            storage=storage,
             sampler=RandomSampler(),
             batch_size=int(buf_cfg.batch_size),
         )
@@ -170,22 +181,30 @@ class DQNAlgorithm(BaseAlgorithm):
         return frames_collected < int(self.acfg.init_random_frames)
 
     def step(self, batch: TensorDict) -> dict[str, float]:
-        """Sample from replay buffer and do one gradient update."""
-        sample = self.replay_buffer.sample().to(self.device)
+        """Sample from replay buffer and do gradient updates."""
+        n_updates = int(self.acfg.updates_per_step)
+        total_loss = 0.0
+        total_q = 0.0
 
-        loss_td = self.loss_module(sample)
-        loss = loss_td["loss"]
+        for _ in range(n_updates):
+            sample = self.replay_buffer.sample().to(self.device)
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(
-            self.loss_module.parameters(), float(self.acfg.max_grad_norm)
-        )
-        self.optimizer.step()
+            loss_td = self.loss_module(sample)
+            loss = loss_td["loss"]
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(
+                self.loss_module.parameters(), float(self.acfg.max_grad_norm)
+            )
+            self.optimizer.step()
+
+            total_loss += loss.item()
+            total_q += loss_td.get("pred_value", torch.tensor(0.0)).mean().item()
 
         return {
-            "loss/td": loss.item(),
-            "q/mean": loss_td.get("pred_value", torch.tensor(0.0)).mean().item(),
+            "loss/td": total_loss / n_updates,
+            "q/mean": total_q / n_updates,
         }
 
     def on_step_complete(self, frames_collected: int) -> None:
@@ -203,7 +222,7 @@ class DQNAlgorithm(BaseAlgorithm):
             step=0,
             policy_state_dict=self.q_actor.state_dict(),
             optimizer_state_dict=self.optimizer.state_dict(),
-            extra={"storage_path": str(self.replay_buffer._storage._path)},
+            extra={"storage_path": str(getattr(self.replay_buffer._storage, "scratch_dir", "in-memory"))},
         )
 
     def _load_training_state(self, state: TrainingState) -> None:

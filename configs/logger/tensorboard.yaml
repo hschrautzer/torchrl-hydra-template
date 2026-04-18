@@ -1,3 +1,4 @@
-_target_: src.callbacks.logger.TensorBoardLogger
-
-log_dir: ${hydra:runtime.output_dir}/tb_logs
+# @package _global_
+logger:
+  - _target_: src.callbacks.logger.TensorBoardLogger
+    log_dir: ${paths.output_dir}/tensorboard/

@@ -21,17 +21,23 @@ class WandBLogger:
         name: str | None = None,
         tags: list[str] | None = None,
         mode: str = "online",
+        save_dir: str | None = None,
     ) -> None:
         self.project = project
         self.entity = entity
         self.name = name
         self.tags = tags or []
         self.mode = mode
+        self.save_dir = save_dir
         self._run = None
 
     def on_train_start(self, state: dict[str, Any]) -> None:
         import wandb
         from omegaconf import OmegaConf
+
+        if self.save_dir is not None:
+            from pathlib import Path
+            Path(self.save_dir).mkdir(parents=True, exist_ok=True)
 
         cfg = state.get("cfg")
         config_dict = OmegaConf.to_container(cfg, resolve=True) if cfg is not None else {}
@@ -42,6 +48,7 @@ class WandBLogger:
             tags=self.tags,
             mode=self.mode,
             config=config_dict,
+            dir=self.save_dir,
         )
 
     def on_step_end(self, metrics: dict[str, float], step: int) -> None:

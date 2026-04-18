@@ -1,18 +1,31 @@
 # @package _global_
 defaults:
   - override /algorithm: dqn
-  - override /environment: cartpole
+  - override /environment: cartpole_envpool
   - override /logger: []
   - _self_
 
 trainer:
-  total_frames: 100_000
+  total_frames: 500_000
   seed: 42
+  accelerator: gpu
+  devices: [0]
+  num_envs: 16
 
 algorithm:
-  frames_per_batch: 200
-  init_random_frames: 1_000
+  frames_per_batch: 1_000
+  init_random_frames: 10_000
+  updates_per_step: 50
   replay_buffer:
-    capacity: 10_000
-    batch_size: 64
-  eps_annealing_frames: 10_000
+    capacity: 100_000
+    batch_size: 256
+    storage: tensor
+  lr: 1e-4
+  gamma: 0.99
+  tau: 0.005
+  eps_annealing_frames: 100_000
+  eps_end: 0.05
+  network:
+    architecture: mlp
+    hidden_sizes: [64, 64, 64]
+    activation: relu

@@ -1,0 +1,4 @@
+[2026-04-18 09:06:05,962][asyncio][WARNING] - socket.send() raised exception.
+[2026-04-18 09:06:05,963][asyncio][WARNING] - socket.send() raised exception.
+[2026-04-18 09:53:05,424][asyncio][WARNING] - socket.send() raised exception.
+[2026-04-18 09:53:05,424][asyncio][WARNING] - socket.send() raised exception.

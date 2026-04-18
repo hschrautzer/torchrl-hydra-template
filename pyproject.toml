@@ -29,6 +29,8 @@ dependencies = [
     "pytest>=8.0.0",
     "pytest-timeout>=2.3.0",
     "torchvision>=0.26.0",
+    "envpool>=0.8.4",
+    "treevalue>=1.5.0",
 ]
 
 [build-system]

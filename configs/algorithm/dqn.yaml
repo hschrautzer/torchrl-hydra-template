@@ -9,12 +9,15 @@ init_random_frames: 5_000
 replay_buffer:
   capacity: 100_000
   batch_size: 128
+  storage: tensor  # "tensor" (in-memory, GPU) or "mmap" (disk-backed)
 
 # Optimization
 lr: 1e-4
 gamma: 0.99
 max_grad_norm: 10.0
-target_update_every: 1_000
+updates_per_step: 1         # gradient updates per collector step
+target_update_every: 1_000  # ignored when tau > 0
+tau: 0.0                    # soft update coefficient; 0 = hard update
 
 # Exploration (epsilon-greedy)
 eps_start: 1.0

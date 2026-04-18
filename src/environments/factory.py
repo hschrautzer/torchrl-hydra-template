@@ -10,7 +10,10 @@ Or directly:
 """
 from __future__ import annotations
 
+from functools import partial
 from typing import Sequence
+
+
 
 
 def make_env(
@@ -49,7 +52,8 @@ def make_env(
         TransformedEnv (single env or wrapped in ParallelEnv)
     """
     if backend == "gymnasium":
-        env_fn = lambda: _make_gymnasium_env(  # noqa: E731
+        env_fn = partial(
+            _make_gymnasium_env,
             name=name,
             grayscale=grayscale,
             resize=resize,
@@ -59,15 +63,24 @@ def make_env(
             device=device,
         )
     elif backend == "dm_control":
-        env_fn = lambda: _make_dmcontrol_env(  # noqa: E731
+        env_fn = partial(
+            _make_dmcontrol_env,
             name=name,
             task=task or "walk",
             normalize_obs=normalize_obs,
             device=device,
         )
+    elif backend == "envpool":
+        return _make_envpool_env(
+            name=name,
+            num_envs=num_envs,
+            clip_rewards=clip_rewards,
+            normalize_obs=normalize_obs,
+            device=device,
+        )
     else:
         raise ValueError(
-            f"Unknown backend '{backend}'. Choose from: 'gymnasium', 'dm_control'."
+            f"Unknown backend '{backend}'. Choose from: 'gymnasium', 'dm_control', 'envpool'."
         )
 
     if num_envs > 1:
@@ -136,6 +149,71 @@ def _make_gymnasium_env(
         from torchrl.envs.transforms import Compose
         return TransformedEnv(base_env, Compose(*transforms))
     return base_env
+
+
+def _unsqueeze_signals(td):
+    """Ensure reward/done signals have a trailing singleton dim.
+
+    EnvPool produces shape ``[N]`` but torchrl losses expect ``[N, 1]``.
+    """
+    for key in ["reward", "done", "terminated", "truncated"]:
+        t = td.get(key, None)
+        if t is not None and t.dim() >= 1 and t.shape[-1] != 1:
+            td.set(key, t.unsqueeze(-1))
+    next_td = td.get("next", None)
+    if next_td is not None:
+        _unsqueeze_signals(next_td)
+    return td
+
+
+def _patch_envpool_shapes(env):
+    """Patch an envpool env to unsqueeze reward/done signals after step/reset.
+
+    This runs after the env's internal auto-reset masking, so it doesn't
+    interfere with envpool's internal operations.
+    """
+    orig_step = env.step
+
+    def patched_step(td, **kwargs):
+        result = orig_step(td, **kwargs)
+        return _unsqueeze_signals(result)
+
+    env.step = patched_step
+
+    orig_reset = env.reset
+
+    def patched_reset(td=None, **kwargs):
+        result = orig_reset(td, **kwargs)
+        return _unsqueeze_signals(result)
+
+    env.reset = patched_reset
+    return env
+
+
+def _make_envpool_env(
+    name: str,
+    num_envs: int,
+    clip_rewards: bool,
+    normalize_obs: bool,
+    device: str,
+):
+    from torchrl.envs import MultiThreadedEnv, TransformedEnv
+    from torchrl.envs.transforms import Compose, RewardClipping
+
+    env = _patch_envpool_shapes(
+        MultiThreadedEnv(num_workers=num_envs, env_name=name)
+    )
+
+    transforms = []
+    if clip_rewards:
+        transforms.append(RewardClipping(-1.0, 1.0))
+    if normalize_obs:
+        from torchrl.envs.transforms import ObservationNorm
+        transforms.append(ObservationNorm(in_keys=["observation"]))
+
+    if transforms:
+        return TransformedEnv(env, Compose(*transforms))
+    return env
 
 
 def _make_dmcontrol_env(
