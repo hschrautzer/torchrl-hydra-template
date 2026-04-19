@@ -198,6 +198,7 @@ class DQNAlgorithm(BaseAlgorithm):
                 self.loss_module.parameters(), float(self.acfg.max_grad_norm)
             )
             self.optimizer.step()
+            self.target_updater.step()
 
             total_loss += loss.item()
             total_q += loss_td.get("pred_value", torch.tensor(0.0)).mean().item()
@@ -208,10 +209,9 @@ class DQNAlgorithm(BaseAlgorithm):
         }
 
     def on_step_complete(self, frames_collected: int) -> None:
-        """Decay epsilon and update target network."""
+        """Decay epsilon."""
         if frames_collected >= int(self.acfg.init_random_frames):
             self.eps_module.step(int(self.acfg.frames_per_batch))
-            self.target_updater.step()
 
     # ------------------------------------------------------------------
     # Checkpointing

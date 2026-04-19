@@ -1,19 +1,19 @@
 # @package _global_
-# DQN on CartPole using plain gymnasium (single env, CPU collector).
-# Mirrors the standalone working script: [128, 128] MLP, soft target update,
-# tau=1e-3, 10 updates/batch, 50k-frame epsilon anneal.
+# DQN on CartPole using envpool (16 parallel envs, GPU collector).
+# The envpool wrapper now derives `terminated` vs `truncated` from step counts
+# so DQN bootstraps correctly across time-limit truncations.
 defaults:
   - override /algorithm: dqn
-  - override /environment: cartpole
+  - override /environment: cartpole_envpool
   - override /logger: []
   - _self_
 
 trainer:
   total_frames: 500_000
   seed: 42
-  accelerator: cpu
+  accelerator: gpu
   devices: [0]
-  num_envs: 1
+  num_envs: 16
 
 algorithm:
   frames_per_batch: 1_000

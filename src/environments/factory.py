@@ -29,6 +29,7 @@ def make_env(
     normalize_obs: bool = False,
     device: str = "cpu",
     task: str | None = None,
+    max_episode_steps: int | None = None,
     **kwargs,
 ):
     """Build a (possibly vectorised) TransformedEnv.
@@ -77,6 +78,7 @@ def make_env(
             clip_rewards=clip_rewards,
             normalize_obs=normalize_obs,
             device=device,
+            max_episode_steps=max_episode_steps,
         )
     else:
         raise ValueError(
@@ -166,17 +168,54 @@ def _unsqueeze_signals(td):
     return td
 
 
-def _patch_envpool_shapes(env):
-    """Patch an envpool env to unsqueeze reward/done signals after step/reset.
+def _patch_envpool_shapes(env, num_envs: int, max_episode_steps: int | None = None):
+    """Patch an envpool env: fix signal shapes and split done → terminated/truncated.
 
-    This runs after the env's internal auto-reset masking, so it doesn't
-    interfere with envpool's internal operations.
+    envpool auto-resets on done and collapses terminated with truncated (both
+    equal to done). DQN needs them distinct to correctly bootstrap from
+    time-limit truncations; otherwise it learns Q-values as if the episode
+    truly ended at the time limit. When ``max_episode_steps`` is provided, we
+    track per-env step counts and derive ``terminated = done AND step_count <
+    max_episode_steps`` (a done at the step limit is a truncation, not a real
+    termination).
     """
+    import torch as _torch
+
+    step_counters = (
+        _torch.zeros(num_envs, dtype=_torch.long)
+        if max_episode_steps is not None
+        else None
+    )
+
+    def _split_done(next_td):
+        if step_counters is None:
+            return
+        done = next_td.get("done", None)
+        if done is None:
+            return
+        step_counters.add_(1)
+        done_cpu = done.view(-1).bool().cpu()
+        trunc = done_cpu & (step_counters >= max_episode_steps)
+        term = done_cpu & ~trunc
+        next_td.set(
+            "terminated",
+            term.view_as(done.cpu()).to(device=done.device, dtype=done.dtype),
+        )
+        next_td.set(
+            "truncated",
+            trunc.view_as(done.cpu()).to(device=done.device, dtype=done.dtype),
+        )
+        step_counters[done_cpu] = 0
+
     orig_step = env.step
 
     def patched_step(td, **kwargs):
         result = orig_step(td, **kwargs)
-        return _unsqueeze_signals(result)
+        _unsqueeze_signals(result)
+        next_td = result.get("next", None)
+        if next_td is not None:
+            _split_done(next_td)
+        return result
 
     env.step = patched_step
 
@@ -184,7 +223,10 @@ def _patch_envpool_shapes(env):
 
     def patched_reset(td=None, **kwargs):
         result = orig_reset(td, **kwargs)
-        return _unsqueeze_signals(result)
+        _unsqueeze_signals(result)
+        if step_counters is not None:
+            step_counters.zero_()
+        return result
 
     env.reset = patched_reset
     return env
@@ -196,12 +238,15 @@ def _make_envpool_env(
     clip_rewards: bool,
     normalize_obs: bool,
     device: str,
+    max_episode_steps: int | None = None,
 ):
     from torchrl.envs import MultiThreadedEnv, TransformedEnv
     from torchrl.envs.transforms import Compose, RewardClipping
 
     env = _patch_envpool_shapes(
-        MultiThreadedEnv(num_workers=num_envs, env_name=name)
+        MultiThreadedEnv(num_workers=num_envs, env_name=name),
+        num_envs=num_envs,
+        max_episode_steps=max_episode_steps,
     )
 
     transforms = []
