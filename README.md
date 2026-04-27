@@ -73,7 +73,7 @@ The `Environment` class is a thin wrapper around TorchRL's environment creation.
 ```python
 from src.environments.environment import Environment
 
-env = Environment(cfg.environment)
+env = Environment(name="CartPole-v1", backend="gymnasium", obs_shape=[4], num_actions=2)
 print(env.obs_shape)    # (4,) for CartPole
 print(env.num_actions)  # 2 for CartPole
 
@@ -188,51 +188,85 @@ trainer:
 
 ### Step 1: Define the algorithm class
 
-Create `src/algorithms/my_algo.py`:
+Create `src/algorithms/my_algo.py`. Hyperparameters are explicit keyword arguments on `__init__` — no separate config dataclass needed:
 
 ```python
-from dataclasses import dataclass
-from src.algorithms.base import BaseAlgorithm, CollectorConfig
-
-@dataclass
-class MyAlgoConfig:
-    lr: float = 3e-4
-    gamma: float = 0.99
-    # ... all hyperparameters with defaults
+import torch
+from omegaconf import DictConfig
+from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
 
 class MyAlgorithm(BaseAlgorithm):
+    """One-line description.
+
+    Args:
+        cfg: Full Hydra config (trainer, logger, environment sections).
+        device: Resolved torch.device; set by the Trainer.
+        lr: Adam learning rate.
+        gamma: Discount factor.
+        network: Dict with keys ``architecture``, ``hidden_sizes``, ``activation``,
+            ``layer_norm``.
+    """
+
+    def __init__(
+        self,
+        cfg: DictConfig,
+        device: torch.device | None = None,
+        *,
+        lr: float = 3e-4,
+        gamma: float = 0.99,
+        network: dict | None = None,
+    ) -> None:
+        super().__init__(cfg, device)
+        self.lr = lr
+        self.gamma = gamma
+        self._network_cfg = network or {
+            "architecture": "mlp", "hidden_sizes": [256, 256],
+            "activation": "tanh", "layer_norm": False,
+        }
+
     def setup(self, env):
-        self.acfg = self._build_acfg(MyAlgoConfig())
-        # Build networks using env.observation_spec, env.action_spec
-        # Build loss module, optimizer
-    
+        from omegaconf import OmegaConf
+        from src.networks.factory import make_network
+        obs_shape = tuple(self.cfg.environment.obs_shape)
+        num_actions = int(self.cfg.environment.num_actions)
+        net = make_network(OmegaConf.create(self._network_cfg), obs_shape, num_actions)
+        # Build loss module, optimizer ...
+
     def get_policy(self):
-        return self.actor  # greedy policy
-    
+        return self.actor
+
     def get_explore_policy(self):
-        return self.actor  # with exploration if needed
-    
+        return self.actor
+
     def get_collector_config(self):
         return CollectorConfig(
             frames_per_batch=2048,
             total_frames=int(self.cfg.trainer.total_frames),
         )
-    
+
     def step(self, batch):
         # Your update logic here
         return {"loss/policy": loss.item()}
+
+    def _get_training_state(self) -> TrainingState: ...
+    def _load_training_state(self, state: TrainingState) -> None: ...
 ```
 
 ### Step 2: Add a config file
 
-Create `configs/algorithm/my_algo.yaml`:
+Create `configs/algorithm/my_algo.yaml`. Only list values that differ from the Python defaults:
 
 ```yaml
-# @package _global_
-algorithm:
-  _target_: src.algorithms.my_algo.MyAlgorithm
-  lr: 3e-4
-  gamma: 0.99
+_target_: src.algorithms.my_algo.MyAlgorithm
+# Default values and parameter descriptions: src/algorithms/my_algo.py (MyAlgorithm.__init__)
+
+lr: 3e-4
+gamma: 0.99
+network:
+  architecture: mlp
+  hidden_sizes: [256, 256]
+  activation: tanh
+  layer_norm: false
 ```
 
 ### Step 3: Create an experiment config
@@ -336,22 +370,30 @@ configs/
 ### Config override hierarchy
 
 ```
-dataclass defaults  ←  configs/algorithm/*.yaml  ←  experiment config  ←  CLI overrides
+Python constructor defaults  ←  configs/algorithm/*.yaml  ←  experiment config  ←  CLI overrides
 ```
 
-Each algorithm defines a typed `@dataclass` with defaults (e.g., `DQNConfig`). The YAML files override those defaults. Experiment configs override the YAML. CLI args override everything:
+Each algorithm's `__init__` carries typed defaults for every hyperparameter. YAML files override those defaults. Experiment configs override the YAML. CLI args override everything:
 
 ```shell
 python src/train.py experiment=dqn/cartpole algorithm.lr=1e-3 trainer.total_frames=2_000_000
 ```
 
-### Algorithm config dataclasses
+### Algorithm hyperparameters
 
-Each algorithm file defines a typed `@dataclass` that lives alongside the algorithm class. The dataclass serves three purposes:
+Hyperparameters live as **explicit keyword arguments on `__init__`**, not in a separate config dataclass. This gives IDE hover docs and completion while keeping Hydra override capability. The constructor is the single source of truth for:
 
 1. **Typed defaults** — every hyperparameter has an explicit Python default so the algorithm is runnable without any YAML.
-2. **Inline documentation** — comments next to each field explain what it controls.
+2. **Inline documentation** — the docstring `Args:` block explains what each parameter controls.
 3. **Discoverability** — a reader opening `reinforce.py` immediately sees all knobs without cross-referencing YAML files.
+
+`train.py` unpacks `cfg.algorithm` as `**kwargs` so YAML values flow through automatically:
+
+```python
+alg_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.algorithm, resolve=True).items()
+              if k != "_target_"}
+algorithm = AlgClass(cfg=cfg, device=None, **alg_kwargs)
+```
 
 ### Network architecture
 
