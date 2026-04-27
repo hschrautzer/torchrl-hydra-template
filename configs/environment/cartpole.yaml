@@ -5,9 +5,5 @@ backend: gymnasium
 obs_shape: [4]
 num_actions: 2
 
-# Preprocessing — none needed for CartPole
-frame_stack: 1
-grayscale: false
-resize: null
-clip_rewards: false
-normalize_obs: false
+transforms:
+  - _target_: torchrl.envs.transforms.StepCounter

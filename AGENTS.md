@@ -57,7 +57,7 @@ YAML values override Python defaults; keys absent from the YAML fall back to con
 
 ### Environment pattern
 
-`Environment.__init__` accepts all `make_env` parameters explicitly (same keyword-only pattern):
+`Environment.__init__` accepts env parameters explicitly:
 
 ```python
 env_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.environment, resolve=True).items()
@@ -65,7 +65,40 @@ env_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.environment, resolve=T
 environment = Environment(**env_kwargs)
 ```
 
-`make_env` in `src/environments/factory.py` is the single function that builds TorchRL `TransformedEnv` instances. `Environment` stores params in `self._factory_kwargs` and calls `make_env(**self._factory_kwargs, num_envs=num_envs, device=device)`.
+`make_env` in `src/environments/factory.py` builds TorchRL `TransformedEnv` instances. `Environment` stores params in `self._factory_kwargs` and calls `make_env(**self._factory_kwargs, num_envs=num_envs, device=device)`.
+
+#### Gymnasium transforms list
+
+For gymnasium envs, transforms are configured as an explicit list in the YAML. Each entry has a `_target_` key pointing to a `torchrl.envs.transforms` class; kwargs follow. They are instantiated fresh per `make_env()` call via `hydra.utils.instantiate` (important for stateful transforms like `CatFrames`).
+
+```yaml
+# configs/environment/my_env.yaml
+from_pixels: true       # pass from_pixels=True to GymEnv for pixel obs
+transforms:
+  - _target_: torchrl.envs.transforms.ToTensorImage
+    in_keys: [pixels]
+    out_keys: [pixels]
+  - _target_: torchrl.envs.transforms.GrayScale
+    in_keys: [pixels]
+    out_keys: [pixels]
+  - _target_: torchrl.envs.transforms.Resize
+    h: 84
+    w: 84
+    in_keys: [pixels]
+    out_keys: [pixels]
+  - _target_: torchrl.envs.transforms.CatFrames
+    N: 4
+    dim: -3
+    in_keys: [pixels]
+    out_keys: [observation]   # DQNAlgorithm expects "observation" key
+  - _target_: torchrl.envs.transforms.StepCounter
+```
+
+Key rules:
+- `CatFrames` must map `in_keys: [pixels]` → `out_keys: [observation]` so `DQNAlgorithm` finds the expected `"observation"` key.
+- Always include `StepCounter` explicitly in the list — it is no longer auto-appended.
+- `VecNorm` requires `init_stats()` — skip it (no hook in this architecture).
+- dm_control and envpool use built-in transform pipelines; backend-specific kwargs (`normalize_obs`, `clip_rewards`) flow through `**kwargs`.
 
 ### YAML config files
 
@@ -92,24 +125,27 @@ src/
     base.py                 — BaseAlgorithm ABC; TrainingState and CollectorConfig dataclasses
     dqn.py                  — DQNAlgorithm  (off-policy, StepTrainer)
     ppo.py                  — PPOAlgorithm  (on-policy, StepTrainer)
-    reinforce.py            — ReinforceAlgorithm (on-policy, EpisodicTrainer)
+    reinforce.py            — ReinforceAlgorithm (on-policy, EpisodeTrainer)
   environments/
     environment.py          — Environment wrapper (holds factory kwargs, exposes make_env)
     factory.py              — make_env: Gymnasium / dm_control / envpool + transforms
   networks/
     factory.py              — make_network: MLP, AtariCNN
-  trainer.py                — BaseTrainer, EpisodicTrainer, StepTrainer, callbacks
+  trainers/
+    BaseTrainer.py          — BaseTrainer ABC, TrainerEvent, Callback protocol, fire_callbacks
+    EpisodeTrainer.py       — EpisodeTrainer (episodic rollouts via env.rollout)
+    StepTrainer.py          — StepTrainer (fixed-size batches via SyncDataCollector)
 configs/
   algorithm/                — per-algo HP overrides + _target_
-  environment/              — env kwargs
-  experiment/               — composed experiment configs
+  environment/              — env kwargs (cartpole, atari_breakout, atari_pong, dmc_humanoid)
+  experiment/               — composed experiment configs (dqn/cartpole, dqn/atari-pong, …)
 ```
 
 ## Adding a new algorithm
 
 1. Create `src/algorithms/my_algo.py` following the explicit-kwargs pattern above.
 2. Implement `setup(env)`, `step(batch) -> dict`, `get_policy()`, `get_explore_policy()`, `_get_training_state()`, `_load_training_state()`.
-3. Add `get_collector_config()` if using `StepTrainer`.
+3. Add `get_collector_config()` if using `StepTrainer` (see `src/trainers/StepTrainer.py`).
 4. Create `configs/algorithm/my_algo.yaml` with `_target_` and any non-default values.
 5. Create `configs/experiment/my_algo/<env>.yaml` with defaults overrides.
 
@@ -126,7 +162,7 @@ configs/
 
 ```shell
 python src/train.py experiment=dqn/cartpole
-python src/train.py experiment=dqn/cartpole-torchrl-sota
+python src/train.py experiment=dqn/atari_pong trainer.accelerator=gpu trainer.devices=[0]
 python src/train.py experiment=ppo/dmc_humanoid trainer.accelerator=gpu trainer.devices=[0]
 python src/train.py experiment=dqn/cartpole algorithm.lr=1e-3
 pytest tests/test_smoke.py -v

@@ -9,7 +9,10 @@ init_random_frames: 5_000
 replay_buffer:
   capacity: 100_000
   batch_size: 128
-  storage: tensor  # "tensor" (in-memory, GPU) or "mmap" (disk-backed)
+  storage: tensor       # "tensor" (in-memory) or "mmap" (disk-backed)
+  storage_device: null  # tensor only: device for storage; null → same as trainer device
+                        # Set "cpu" for Atari-scale buffers (1M × 108 KB = ~108 GB)
+  scratch_dir: null     # mmap only: directory for backing files; null → /tmp
 
 # Optimization
 lr: 1e-4

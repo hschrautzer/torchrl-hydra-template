@@ -1,15 +1,12 @@
 """Environment factory: builds a TorchRL TransformedEnv from Hydra config params.
 
-Usage (from algorithm setup):
-    from hydra.utils import instantiate
-    env = instantiate(cfg.environment, device=str(self.device))
-
 Or directly:
     from src.environments.factory import make_env
     env = make_env(**OmegaConf.to_container(cfg.environment, resolve=True), device="cpu")
 """
 from __future__ import annotations
 
+import importlib
 from functools import partial
 from typing import Sequence
 
@@ -20,12 +17,9 @@ def make_env(
     obs_shape: Sequence[int],
     num_actions: int,
     num_envs: int = 1,
-    frame_stack: int = 1,
-    grayscale: bool = False,
-    resize: Sequence[int] | None = None,
-    clip_rewards: bool = False,
-    normalize_obs: bool = False,
     device: str = "cpu",
+    transforms: list | None = None,
+    from_pixels: bool = False,
     task: str | None = None,
     max_episode_steps: int | None = None,
     **kwargs,
@@ -33,50 +27,53 @@ def make_env(
     """Build a (possibly vectorised) TransformedEnv.
 
     Args:
-        name: environment name (e.g. "CartPole-v1", "ALE/Breakout-v5", "humanoid")
-        backend: "gymnasium" or "dm_control"
+        name: environment name (e.g. "CartPole-v1", "ALE/Pong-v5", "humanoid")
+        backend: "gymnasium", "dm_control", or "envpool"
         obs_shape: expected observation shape after preprocessing (for validation)
-        num_actions: number of actions (discrete or continuous dim)
-        num_envs: number of parallel envs (>1 → ParallelEnv)
-        frame_stack: number of frames to stack (CatFrames)
-        grayscale: convert RGB to grayscale
-        resize: [H, W] to resize pixel observations
-        clip_rewards: clip rewards to {-1, 0, +1} (standard Atari)
-        normalize_obs: apply running mean/std normalisation to observations
-        device: target device string
+        num_actions: number of actions (discrete count or continuous dim)
+        num_envs: number of parallel envs (>1 → ParallelEnv for gymnasium/dm_control)
+        device: target device string; ParallelEnv workers always run on CPU
+            (CUDA contexts cannot survive fork) — the collector moves data to GPU
+        transforms: list of transform dicts (each with ``_target_`` key), instantiated
+            fresh per call.  Gymnasium only.
+        from_pixels: pass ``from_pixels=True`` to ``GymEnv``.  Gymnasium only.
         task: dm_control task string (e.g. "walk")
-        **kwargs: extra env kwargs forwarded to the base env constructor
+        max_episode_steps: maximum steps per episode (envpool only)
+        **kwargs: extra kwargs forwarded to backend-specific helpers
+            (e.g. ``normalize_obs`` for dm_control, ``clip_rewards`` for envpool)
 
     Returns:
         TransformedEnv (single env or wrapped in ParallelEnv)
     """
+    # ParallelEnv spawns/forks worker processes. CUDA contexts cannot be used
+    # in forked children — passing a GPU device to GymEnv inside a worker causes
+    # a bus error during the first CUDA call. Workers always use CPU; the
+    # SyncDataCollector moves batched tensors to the target device after collection.
+    worker_device = "cpu" if num_envs > 1 else device
+
     if backend == "gymnasium":
         env_fn = partial(
             _make_gymnasium_env,
             name=name,
-            grayscale=grayscale,
-            resize=resize,
-            frame_stack=frame_stack,
-            clip_rewards=clip_rewards,
-            normalize_obs=normalize_obs,
-            device=device,
+            transforms=transforms,
+            from_pixels=from_pixels,
+            device=worker_device,
         )
     elif backend == "dm_control":
         env_fn = partial(
             _make_dmcontrol_env,
             name=name,
             task=task or "walk",
-            normalize_obs=normalize_obs,
-            device=device,
+            device=worker_device,
+            **kwargs,
         )
     elif backend == "envpool":
         return _make_envpool_env(
             name=name,
             num_envs=num_envs,
-            clip_rewards=clip_rewards,
-            normalize_obs=normalize_obs,
             device=device,
             max_episode_steps=max_episode_steps,
+            **kwargs,
         )
     else:
         raise ValueError(
@@ -85,70 +82,66 @@ def make_env(
 
     if num_envs > 1:
         from torchrl.envs import ParallelEnv
-        return ParallelEnv(num_envs, env_fn)
+        # "fork" (Linux default) creates workers as copies of the parent process.
+        # ALE (Atari) and other native libs with global C-level state can corrupt
+        # after forking, producing bus errors tens of thousands of steps in.
+        # "spawn" starts each worker from a clean Python interpreter so there is
+        # no inherited C state — safe for any env at the cost of slower startup.
+        return ParallelEnv(num_envs, env_fn, mp_start_method="spawn")
     else:
         return env_fn()
 
 
+def _instantiate_transform(cfg: dict):
+    """Instantiate a TorchRL transform from a ``_target_``-keyed dict.
+
+    Uses importlib directly instead of ``hydra.utils.instantiate`` so this
+    function is safe to call inside forked ``ParallelEnv`` worker processes
+    where Hydra's global initialisation state is not guaranteed.
+    """
+    cfg = dict(cfg)  # copy — do not mutate the caller's list element
+    target = cfg.pop("_target_")
+    module_path, class_name = target.rsplit(".", 1)
+    cls = getattr(importlib.import_module(module_path), class_name)
+    return cls(**cfg)
+
+
 def _make_gymnasium_env(
     name: str,
-    grayscale: bool,
-    resize: Sequence[int] | None,
-    frame_stack: int,
-    clip_rewards: bool,
-    normalize_obs: bool,
+    transforms: list | None,
+    from_pixels: bool,
     device: str,
 ):
+    """Build a gymnasium TransformedEnv from an explicit transforms list.
+
+    Each element of ``transforms`` must be a dict with a ``_target_`` key
+    (and any constructor kwargs) as produced by ``OmegaConf.to_container``.
+    ``_instantiate_transform`` is called fresh per element so each call
+    produces independent transform objects with independent state
+    (important for stateful transforms like ``CatFrames``).
+
+    Args:
+        name: gymnasium env name (e.g. "CartPole-v1", "ALE/Pong-v5")
+        transforms: list of dicts, each with ``_target_`` pointing to a
+            ``torchrl.envs.transforms`` class and any constructor kwargs.
+            If ``None`` or empty, the bare base env is returned.
+        from_pixels: if ``True``, pass ``from_pixels=True`` to ``GymEnv``
+            so the ``"pixels"`` observation key is available.
+        device: target device string.
+
+    Returns:
+        TransformedEnv (or bare GymEnv when transforms is empty/None).
+    """
     from torchrl.envs import GymEnv, TransformedEnv
-    from torchrl.envs.transforms import (
-        CatFrames,
-        Compose,
-        GrayScale,
-        RewardClipping,
-        ToTensorImage,
-    )
+    from torchrl.envs.transforms import Compose
 
-    # Determine if this is a pixel-based env
-    pixel_obs = grayscale or resize is not None
+    base_env = GymEnv(name, device=device, from_pixels=from_pixels)
 
-    base_env = GymEnv(name, device=device, from_pixels=pixel_obs)
+    if not transforms:
+        return base_env
 
-    transforms = []
-
-    if pixel_obs:
-        transforms.append(ToTensorImage(in_keys=["pixels"], out_keys=["pixels"]))
-
-    if grayscale:
-        transforms.append(GrayScale(in_keys=["pixels"], out_keys=["pixels"]))
-
-    if resize is not None:
-        from torchrl.envs.transforms import Resize
-        h, w = resize
-        transforms.append(Resize(h, w, in_keys=["pixels"], out_keys=["pixels"]))
-
-    if frame_stack > 1:
-        transforms.append(
-            CatFrames(N=frame_stack, dim=-3, in_keys=["pixels"], out_keys=["observation"])
-        )
-    elif pixel_obs:
-        # Rename pixels → observation for a uniform key across all envs
-        from torchrl.envs.transforms import RenameTransform
-        transforms.append(RenameTransform(["pixels"], ["observation"]))
-
-    if clip_rewards:
-        transforms.append(RewardClipping(-1.0, 1.0))
-
-    if normalize_obs:
-        from torchrl.envs.transforms import ObservationNorm
-        transforms.append(ObservationNorm(in_keys=["observation"]))
-
-    from torchrl.envs.transforms import StepCounter
-    transforms.append(StepCounter())
-
-    if transforms:
-        from torchrl.envs.transforms import Compose
-        return TransformedEnv(base_env, Compose(*transforms))
-    return base_env
+    transform_objects = [_instantiate_transform(t) for t in transforms]
+    return TransformedEnv(base_env, Compose(*transform_objects))
 
 
 def _patch_envpool_reset_mask(env):
@@ -177,10 +170,9 @@ def _patch_envpool_reset_mask(env):
 def _make_envpool_env(
     name: str,
     num_envs: int,
-    clip_rewards: bool,
-    normalize_obs: bool,
     device: str,
     max_episode_steps: int | None = None,
+    **kwargs,
 ):
     """envpool-backed vectorised env via torchrl's ``MultiThreadedEnv``.
 
@@ -197,6 +189,9 @@ def _make_envpool_env(
       env's ``_reset`` so the now-2D ``_reset`` mask gets squeezed back to 1D
       before indexing envpool's internal obs buffer.
     """
+    clip_rewards = kwargs.get("clip_rewards", False)
+    normalize_obs = kwargs.get("normalize_obs", False)
+
     from torchrl.envs import MultiThreadedEnv, TransformedEnv
     from torchrl.envs.transforms import (
         Compose,
@@ -235,9 +230,11 @@ def _make_envpool_env(
 def _make_dmcontrol_env(
     name: str,
     task: str,
-    normalize_obs: bool,
     device: str,
+    **kwargs,
 ):
+    normalize_obs = kwargs.get("normalize_obs", False)
+
     from torchrl.envs import DMControlEnv, TransformedEnv
     from torchrl.envs.transforms import Compose, DoubleToFloat, StepCounter
 

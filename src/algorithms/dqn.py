@@ -47,8 +47,11 @@ class DQNAlgorithm(BaseAlgorithm):
         eps_start: Initial epsilon for epsilon-greedy exploration.
         eps_end: Final epsilon after annealing.
         eps_annealing_frames: Frames over which epsilon is linearly annealed.
-        replay_buffer: Dict with keys ``capacity``, ``batch_size``, ``prefetch``, ``storage``
-            (``"tensor"`` for in-memory GPU storage, ``"mmap"`` for disk-backed).
+        replay_buffer: Dict with keys ``capacity``, ``batch_size``, ``prefetch``,
+            ``storage`` (``"tensor"`` or ``"mmap"``), ``storage_device``
+            (device for tensor storage; ``None`` → trainer device; use ``"cpu"``
+            for Atari-scale buffers that exceed GPU VRAM), and ``scratch_dir``
+            (directory for mmap backing files; ``None`` → ``/tmp``).
         network: Dict with keys ``architecture``, ``hidden_sizes``, ``activation``,
             ``layer_norm``. Use ``"mlp"`` for CartPole, ``"cnn_atari"`` for Atari.
     """
@@ -87,7 +90,7 @@ class DQNAlgorithm(BaseAlgorithm):
         self.eps_end = eps_end
         self.eps_annealing_frames = eps_annealing_frames
         self._replay_buffer_cfg = replay_buffer or {
-            "capacity": 100_000, "batch_size": 128, "prefetch": 0, "storage": "tensor",
+            "capacity": 10_000, "batch_size": 128, "prefetch": 0, "storage": "tensor",
         }
         self._network_cfg = network or {
             "architecture": "mlp", "hidden_sizes": [128, 128],
@@ -155,9 +158,20 @@ class DQNAlgorithm(BaseAlgorithm):
         storage_type = buf.get("storage", "tensor")
         prefetch = int(buf.get("prefetch", 0))
         if storage_type == "mmap":
-            storage = LazyMemmapStorage(int(buf["capacity"]))
+            # scratch_dir controls where the memory-mapped files are written.
+            # Defaults to tempfile.gettempdir() (/tmp) when None.
+            # For large Atari buffers (1M frames ≈ 108 GB) set scratch_dir to a
+            # path with enough free space: replay_buffer.scratch_dir: /data/replay
+            scratch_dir = buf.get("scratch_dir", None) or None
+            storage = LazyMemmapStorage(int(buf["capacity"]), scratch_dir=scratch_dir)
         else:
-            storage = LazyTensorStorage(int(buf["capacity"]), device=self.device)
+            # storage_device controls where tensor data lives.
+            # Defaults to self.device (GPU) which is fine for small buffers.
+            # For Atari-scale buffers (1M × 108 KB ≈ 108 GB) set storage_device: cpu
+            # so the buffer lives in RAM; batches are moved to GPU in step() via .to().
+            storage_device_str = buf.get("storage_device", None)
+            storage_device = torch.device(storage_device_str) if storage_device_str else self.device
+            storage = LazyTensorStorage(int(buf["capacity"]), device=storage_device)
         self.replay_buffer = TensorDictReplayBuffer(
             storage=storage,
             sampler=RandomSampler(),

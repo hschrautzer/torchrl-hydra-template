@@ -17,18 +17,20 @@ class Environment:
     """Wraps environment parameters and produces TorchRL env instances.
 
     Args:
-        name: Environment name (e.g. ``"CartPole-v1"``, ``"ALE/Breakout-v5"``).
+        name: Environment name (e.g. ``"CartPole-v1"``, ``"ALE/Pong-v5"``).
         backend: Backend to use (``"gymnasium"``, ``"dm_control"``, ``"envpool"``).
         obs_shape: Observation shape after preprocessing (e.g. ``[4]`` or ``[4, 84, 84]``).
         num_actions: Number of actions (discrete count or continuous dim).
-        frame_stack: Number of frames to stack via CatFrames.
-        grayscale: Convert RGB observations to grayscale.
-        resize: ``[H, W]`` to resize pixel observations; ``None`` to skip.
-        clip_rewards: Clip rewards to ``{-1, 0, +1}`` (standard Atari preprocessing).
-        normalize_obs: Apply running mean/std normalisation to observations.
+        transforms: List of transform dicts (each with ``_target_`` key and kwargs),
+            instantiated fresh per ``make_env()`` call via ``hydra.utils.instantiate``.
+            Controls the full transform pipeline; include ``StepCounter`` explicitly.
+            Gymnasium only — dm_control and envpool use built-in pipelines.
+        from_pixels: Pass ``from_pixels=True`` to ``GymEnv`` for pixel observations.
+            Set to ``True`` for any Atari / pixel-based gymnasium environment.
         task: dm_control task string (e.g. ``"walk"`` for ``humanoid-walk``).
-        max_episode_steps: Maximum steps per episode; ``None`` uses env default.
-        **kwargs: Extra keyword arguments forwarded to the base env constructor.
+        max_episode_steps: Maximum steps per episode (envpool only).
+        **kwargs: Extra keyword arguments forwarded to backend-specific helpers
+            (e.g. ``normalize_obs`` for dm_control, ``clip_rewards`` for envpool).
     """
 
     def __init__(
@@ -37,11 +39,8 @@ class Environment:
         backend: str,
         obs_shape: Sequence[int],
         num_actions: int,
-        frame_stack: int = 1,
-        grayscale: bool = False,
-        resize: Sequence[int] | None = None,
-        clip_rewards: bool = False,
-        normalize_obs: bool = False,
+        transforms: list | None = None,
+        from_pixels: bool = False,
         task: str | None = None,
         max_episode_steps: int | None = None,
         **kwargs,
@@ -53,11 +52,8 @@ class Environment:
             "backend": backend,
             "obs_shape": obs_shape,
             "num_actions": num_actions,
-            "frame_stack": frame_stack,
-            "grayscale": grayscale,
-            "resize": resize,
-            "clip_rewards": clip_rewards,
-            "normalize_obs": normalize_obs,
+            "transforms": transforms,
+            "from_pixels": from_pixels,
             "task": task,
             "max_episode_steps": max_episode_steps,
             **kwargs,

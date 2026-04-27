@@ -6,9 +6,4 @@ task: walk                  # dm_control task name
 obs_shape: [67]             # flattened proprioception for humanoid-walk
 num_actions: 21             # continuous action dimension
 
-# Preprocessing
-frame_stack: 1
-grayscale: false
-resize: null
-clip_rewards: false
 normalize_obs: true         # normalize observations to zero mean / unit variance

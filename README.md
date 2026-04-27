@@ -81,11 +81,12 @@ print(env.num_actions)  # 2 for CartPole
 train_env = env.make_env(num_envs=8, device="cuda:0")
 ```
 
-The Environment is a *factory*, not a live env holder. This lets the Trainer create separate train and eval environments and control their lifecycle. The underlying `make_env()` function in `src/environments/factory.py` handles backend-specific setup (Gymnasium, DeepMind Control), observation transforms (grayscale, resize, frame stacking), and vectorization.
+The Environment is a *factory*, not a live env holder. This lets the Trainer create separate train and eval environments and control their lifecycle. The underlying `make_env()` function in `src/environments/factory.py` handles backend-specific setup and vectorization.
 
 **Supported backends:**
-- **Gymnasium** — classic control (CartPole), Atari (Breakout), and any Gymnasium-compatible env
+- **Gymnasium** — classic control (CartPole), Atari (Breakout, Pong), and any Gymnasium-compatible env. Transforms are specified as a list in the environment YAML, each with a `_target_` key and instantiated via `hydra.utils.instantiate`.
 - **DeepMind Control** — continuous control tasks (Humanoid, Walker, etc.)
+- **Envpool** — vectorized Atari/Gym environments via multi-threaded simulation
 
 ### Algorithm
 
@@ -123,7 +124,7 @@ The `step()` method is intentionally unconstrained — the algorithm decides wha
 
 The Trainer manages *how* training runs — the loop structure, device placement, data collection, evaluation, and callbacks. There are two trainer types for different RL paradigms:
 
-#### EpisodicTrainer
+#### EpisodeTrainer
 
 For algorithms that learn from complete episodes (e.g., REINFORCE with Monte-Carlo returns).
 
@@ -136,7 +137,7 @@ while step < total_frames:
     fire_callbacks(ON_STEP_END, metrics, step)
 ```
 
-The EpisodicTrainer rolls out full episodes using `env.rollout()` and passes them directly to the algorithm. No `SyncDataCollector` is used.
+The EpisodeTrainer rolls out full episodes using `env.rollout()` and passes them directly to the algorithm. No `SyncDataCollector` is used.
 
 #### StepTrainer
 
@@ -160,7 +161,7 @@ The StepTrainer creates a `SyncDataCollector` using parameters from `algorithm.g
 
 - **Device management** — resolves `accelerator` + `devices` config to a `torch.device`, sets the algorithm's device
 - **Environment lifecycle** — creates train/eval environments via `Environment.make_env()`
-- **Data collection** — creates and runs the `SyncDataCollector` (StepTrainer) or `env.rollout()` (EpisodicTrainer)
+- **Data collection** — creates and runs the `SyncDataCollector` (StepTrainer) or `env.rollout()` (EpisodeTrainer)
 - **Evaluation** — `trainer.evaluate(num_episodes)` runs the greedy policy and returns reward statistics
 - **Callbacks** — fires `ON_TRAIN_START`, `ON_STEP_END`, `ON_TRAIN_END` events
 - **Checkpointing** — orchestrates save/load of algorithm state + step counter
@@ -169,7 +170,7 @@ The StepTrainer creates a `SyncDataCollector` using parameters from `algorithm.g
 
 | Algorithm | Trainer | Why |
 |-----------|---------|-----|
-| REINFORCE | `EpisodicTrainer` | Updates after full episodes using Monte-Carlo returns |
+| REINFORCE | `EpisodeTrainer` | Updates after full episodes using Monte-Carlo returns |
 | DQN | `StepTrainer` | Collects fixed-size batches, stores in replay buffer, samples for updates |
 | PPO | `StepTrainer` | Collects fixed-size batches, computes GAE, does multi-epoch minibatch updates |
 
@@ -178,7 +179,7 @@ The trainer type is specified in the experiment config:
 ```yaml
 # configs/experiment/reinforce/cartpole.yaml
 trainer:
-  _target_: src.trainer.EpisodicTrainer
+  _target_: src.trainers.EpisodeTrainer
 
 # configs/experiment/dqn/cartpole.yaml (uses default StepTrainer)
 # no override needed
@@ -282,7 +283,7 @@ defaults:
   - _self_
 
 trainer:
-  _target_: src.trainer.StepTrainer  # or EpisodicTrainer
+  _target_: src.trainers.StepTrainer  # or src.trainers.EpisodeTrainer
   total_frames: 500_000
 ```
 
@@ -353,9 +354,10 @@ configs/
 │   ├── reinforce.yaml
 │   ├── dqn.yaml
 │   └── ppo.yaml
-├── environment/            <- Environment kwargs (name, backend, transforms)
+├── environment/            <- Environment kwargs (name, backend, transforms list)
 │   ├── cartpole.yaml
 │   ├── atari_breakout.yaml
+│   ├── atari_pong.yaml
 │   └── dmc_humanoid.yaml
 ├── logger/                 <- Logger backends
 │   ├── wandb.yaml
@@ -364,6 +366,7 @@ configs/
     ├── reinforce/cartpole.yaml
     ├── dqn/cartpole.yaml
     ├── dqn/atari_breakout.yaml
+    ├── dqn/atari-pong.yaml
     └── ppo/dmc_humanoid.yaml
 ```
 
@@ -500,7 +503,10 @@ The Trainer fires events at key points in training. Callbacks subscribe to these
 │   │   └── factory.py          <- make_env: Gymnasium + dm_control + transforms
 │   ├── networks/
 │   │   └── factory.py          <- MLP, AtariCNN (dispatched from algorithm config)
-│   ├── trainer.py              <- BaseTrainer, EpisodicTrainer, StepTrainer, callbacks
+│   ├── trainers/               <- Trainer implementations
+│   │   ├── BaseTrainer.py      <- BaseTrainer ABC, TrainerEvent, Callback, fire_callbacks
+│   │   ├── EpisodeTrainer.py   <- EpisodeTrainer (episodic rollouts via env.rollout)
+│   │   └── StepTrainer.py      <- StepTrainer (fixed-size batches via SyncDataCollector)
 │   ├── callbacks/
 │   │   ├── logger.py           <- WandBLogger, TensorBoardLogger
 │   │   ├── checkpoint.py       <- CheckpointCallback

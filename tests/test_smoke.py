@@ -81,9 +81,26 @@ def test_smoke_dqn_cartpole():
     assert len(metrics) > 0
 
 
+def _dqn_atari_overrides() -> list[str]:
+    return [
+        *_dqn_overrides(),
+        "trainer.num_envs=1",                      # ignore any num_envs in experiment yaml
+        "algorithm.replay_buffer.storage=tensor",  # no mmap disk files in CI
+    ]
+
+
 def test_smoke_dqn_atari_breakout():
-    """DQN on Atari Breakout: pixel obs, CNN Q-network, frame stacking."""
-    cfg = load_experiment_cfg("dqn/atari_breakout", _dqn_overrides())
+    """DQN on Atari Breakout: pixel obs, CNN Q-network, transforms-list config."""
+    cfg = load_experiment_cfg("dqn/atari_breakout", _dqn_atari_overrides())
+    from src.train import _train
+    metrics = _train(cfg)
+    assert isinstance(metrics, dict)
+    assert len(metrics) > 0
+
+
+def test_smoke_dqn_atari_pong():
+    """DQN on Atari Pong: pixel obs, CNN Q-network, SOTA transforms pipeline."""
+    cfg = load_experiment_cfg("dqn/atari_pong", _dqn_atari_overrides())
     from src.train import _train
     metrics = _train(cfg)
     assert isinstance(metrics, dict)

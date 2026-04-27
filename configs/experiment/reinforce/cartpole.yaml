@@ -6,7 +6,7 @@ defaults:
   - _self_
 
 trainer:
-  _target_: src.trainer.EpisodicTrainer
+  _target_: src.trainers.EpisodeTrainer
   total_frames: 500_000
   seed: 42
 
