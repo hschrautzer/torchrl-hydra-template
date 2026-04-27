@@ -222,19 +222,17 @@ class DQNAlgorithm(BaseAlgorithm):
         return frames_collected < self.init_random_frames
 
     def step(self, batch: TensorDict) -> dict[str, float]:
-        """Sample all mini-batches up front, then run sequential gradient updates."""
-        n_updates = self.updates_per_step
+        """Run gradient updates, sampling one mini-batch at a time."""
         mb_size = int(self._replay_buffer_cfg["batch_size"])
-
-        # One big sample call, reshaped into (n_updates, mb_size). Random sampling
-        # with replacement makes this equivalent to n_updates separate sample()s.
-        samples = self.replay_buffer.sample(n_updates * mb_size).to(self.device)
-        samples = samples.reshape(n_updates, mb_size)
 
         total_loss = 0.0
         total_q = 0.0
-        for i in range(n_updates):
-            loss_td = self.loss_module(samples[i])
+        for _ in range(self.updates_per_step):
+            # Sample and immediately move to device; release after each update so
+            # only one mini-batch (mb_size × obs + next_obs) lives on GPU at a time.
+            # Atari: 32 × 2 × 112 KB = 7 MB vs. the old 3200 × 2 × 112 KB = 700 MB.
+            sample = self.replay_buffer.sample(mb_size).to(self.device)
+            loss_td = self.loss_module(sample)
             loss = loss_td["loss"]
 
             self.optimizer.zero_grad()
@@ -247,10 +245,11 @@ class DQNAlgorithm(BaseAlgorithm):
 
             total_loss += loss.item()
             total_q += loss_td.get("pred_value", torch.tensor(0.0)).mean().item()
+            del sample, loss_td, loss
 
         return {
-            "loss/td": total_loss / n_updates,
-            "q/mean": total_q / n_updates,
+            "loss/td": total_loss / self.updates_per_step,
+            "q/mean": total_q / self.updates_per_step,
         }
 
     def on_step_complete(self, frames_collected: int) -> None:

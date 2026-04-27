@@ -21,13 +21,14 @@ algorithm:
   init_random_frames: 200_000
 
   # Replay buffer — SOTA: buffer_size=1_000_000, batch_size=32
-  # 1M Atari frames (4×84×84 float32) ≈ 108 GB — stored in CPU RAM.
-  # Requires ~120 GB free RAM; batches are copied to GPU in step() via .to().
+  # 1M Atari frames (4×84×84 float32) ≈ 226 GB — stored in CPU RAM (both obs + next_obs).
+  # batches are prefetched in a background thread and moved to GPU in step() via .to().
   replay_buffer:
     capacity: 1_000_000
     batch_size: 32
     storage: tensor
     storage_device: cpu
+    prefetch: 4  # async prefetch: overlap buffer sampling with GPU compute
 
   # Optimization — SOTA: lr=0.00025, max_grad_norm=10, num_updates=100
   lr: 0.00025
@@ -45,6 +46,9 @@ algorithm:
   eps_start: 1.0
   eps_end: 0.01
   eps_annealing_frames: 4_000_000
+
+  # torch.compile: fuses loss forward/backward, ~20-40% faster on fixed-shape ops
+  compile: true
 
   # Network: Nature DQN CNN architecture
   # Default values: src/networks/factory.py (AtariCNN.__init__)
