@@ -19,17 +19,24 @@ class Environment:
         transforms: list of ``_target_``-keyed dicts; each is instantiated as
             a ``torchrl.envs.transforms`` object and composed on top of the
             base env. ``None`` or empty leaves the env un-transformed.
+        gym_kwargs: optional extra kwargs forwarded to ``GymEnv`` (e.g.
+            ``{"frame_skip": 4, "from_pixels": True}``).
+        gym_backend: optional gym backend name (e.g. ``"gymnasium"``).
     """
 
     def __init__(
         self,
         name: str,
         transforms: list | None = None,
+        gym_kwargs: dict | None = None,
+        gym_backend: str | None = None,
         **_: object,
     ) -> None:
         self._factory_kwargs: dict = {
             "name": name,
             "transforms": transforms,
+            "gym_kwargs": gym_kwargs,
+            "gym_backend": gym_backend,
         }
 
     def make_env(self, num_envs: int = 1, device: str = "cpu") -> EnvBase:

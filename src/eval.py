@@ -30,6 +30,13 @@ def _evaluate(cfg: DictConfig) -> dict[str, float]:
                   if k != "_target_"}
     environment = Environment(**env_kwargs)
 
+    eval_env_cfg = cfg.get("eval_environment")
+    eval_environment = None
+    if eval_env_cfg is not None:
+        eval_kwargs = {k: v for k, v in OmegaConf.to_container(eval_env_cfg, resolve=True).items()
+                       if k != "_target_"}
+        eval_environment = Environment(**eval_kwargs)
+
     algorithm = instantiate(cfg.algorithm, device=None)
 
     TrainerClass = get_class(cfg.trainer._target_)
@@ -37,6 +44,7 @@ def _evaluate(cfg: DictConfig) -> dict[str, float]:
         cfg=cfg,
         algorithm=algorithm,
         environment=environment,
+        eval_environment=eval_environment,
     )
 
     trainer.setup()

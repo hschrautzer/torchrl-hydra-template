@@ -7,7 +7,14 @@ A modular reinforcement learning research template built on
 [Hydra](https://github.com/facebookresearch/hydra). Three composable components —
 **Environment**, **Algorithm**, **Trainer** — are wired together by `src/train.py`.
 
-Currently only **DQN on CartPole-v1** is implemented; other algorithms will follow.
+Implemented experiments:
+
+| Algorithm | Environment | Experiment config       |
+|-----------|-------------|-------------------------|
+| DQN       | CartPole-v1 | `experiment=dqn/cartpole` |
+| DQN       | ALE/Pong-v5 | `experiment=dqn/pong`     |
+
+Other algorithms will follow.
 
 ## Design principles
 
@@ -44,10 +51,12 @@ class DQNAlgorithm(BaseAlgorithm):
         *,
         # Design choices: factories injected as Callables
         replay_buffer: Callable[[], ReplayBuffer] = lambda: TensorDictReplayBuffer(...),
-        # Partial torchrl MLP; setup() passes in_features, out_features (see below)
-        network: Callable[[int, int], nn.Module] = functools.partial(
-            MLP, num_cells=[120, 84], activation_class=nn.ReLU
+        # Q-net factory; setup() passes (obs_shape, num_actions) — see below.
+        network: Callable[[tuple[int, ...], int], nn.Module] = functools.partial(
+            make_mlp_q_net, num_cells=[120, 84], activation_class=nn.ReLU
         ),
+        # Observation tensordict key (e.g. "observation" for vector obs, "pixels" for image obs).
+        obs_key: str = "observation",
         # Scalar HPs
         lr: float = 2.5e-4,
         gamma: float = 0.99,
@@ -71,12 +80,20 @@ Rules:
 - `BaseAlgorithm.__init__(device)` — **no `cfg` parameter**. Algorithms read env
   specs from `make_env()` inside `setup()`.
 - `replay_buffer` is a **no-arg** factory returning a `ReplayBuffer`.
-- `network` is a factory called as **`network(in_features, out_features)`** with
-  integer positional arguments: flattened observation dim (`prod(observation.shape)`)
-  and discrete action count. Match this in `setup()` and in any custom factory.
-  For TorchRL `MLP`, use **`functools.partial(MLP, ...)`** in Python and **`_partial_:
-  true` + `_target_: torchrl.modules.MLP`** in YAML; omit `in_features` /
-  `out_features` from the partial so `setup()` supplies them.
+- `network` is a factory called as **`network(obs_shape, num_actions)`** —
+  positional `obs_shape` is the raw observation shape tuple (e.g. `(4,)` for
+  CartPole, `(4, 84, 84)` for stacked Atari frames) and `num_actions` is the
+  discrete action count. Use the helpers in `src/networks.py`:
+    - `make_mlp_q_net(obs_shape, num_actions, *, num_cells, activation_class)` —
+      flattens `obs_shape` into a torchrl `MLP`. Default for vector observations.
+    - `NatureDQN(obs_shape, num_actions, *, ...)` — Mnih et al. 2015 ConvNet+MLP
+      head. Default for image observations.
+  Both keep everything after the two positional args **kwarg-only**, so a Hydra
+  `_partial_` config can pre-bind kwargs without colliding with `setup()`'s call.
+- `obs_key` selects which tensordict key the observation comes from. Vector
+  envs (CartPole) use `"observation"`; pixel envs (Atari with `from_pixels=True`)
+  use `"pixels"`. The key is forwarded to `QValueActor.in_keys` and used to read
+  the spec for the network factory.
 - **Activation class in YAML:** `torchrl.modules.MLP` expects `activation_class`
   to be a **type** (it instantiates internally). In Hydra YAML, **`_target_:
   torch.nn.ReLU` nests an instantiation** and produces a module instance, which
@@ -151,12 +168,17 @@ constructor defaults.
 ## Environment
 
 `Environment.__init__` accepts:
-- `name`: gymnasium env id (e.g. `"CartPole-v1"`).
+- `name`: gymnasium env id (e.g. `"CartPole-v1"`, `"ALE/Pong-v5"`).
 - `transforms`: list of `_target_`-keyed dicts, each instantiated as a
   `torchrl.envs.transforms` object and composed on top of the base env.
   Always include `StepCounter` explicitly. Add `RewardSum` if you want
   `train/episode_reward` in the trainer metrics — it populates the
   `("next", "episode_reward")` key the trainer reads.
+- `gym_kwargs`: optional dict forwarded straight to `GymEnv` (e.g.
+  `{"frame_skip": 4, "from_pixels": true, "pixels_only": false,
+  "categorical_action_encoding": true}` for Atari).
+- `gym_backend`: optional backend name (`"gymnasium"`); if set, the GymEnv
+  construction is wrapped in `set_gym_backend(...)`.
 
 ```yaml
 # configs/environment/cartpole.yaml
@@ -166,8 +188,49 @@ transforms:
   - _target_: torchrl.envs.transforms.RewardSum
 ```
 
+```yaml
+# configs/environment/pong_train.yaml — pixel-based Atari env
+name: ALE/Pong-v5
+gym_backend: gymnasium
+gym_kwargs:
+  frame_skip: 4
+  from_pixels: true
+  pixels_only: false
+  categorical_action_encoding: true
+transforms:
+  - _target_: torchrl.envs.NoopResetEnv
+    noops: 30
+    random: true
+  # ... (see configs/environment/pong_train.yaml for the full SOTA stack)
+```
+
 The factory in `src/environments/factory.py` supports gymnasium only.
 For >1 `num_envs`, workers run on CPU (`ParallelEnv` with `mp_start_method="spawn"`).
+
+### Separate evaluation env
+
+`BaseTrainer` accepts an optional `eval_environment: Environment | None` arg.
+When set, `evaluate()` builds its eval env from it; otherwise it falls back to
+`environment`. Wire it in via Hydra package overrides:
+
+```yaml
+# configs/train.yaml (and eval.yaml)
+defaults:
+  - environment: ???
+  - environment@eval_environment: null   # default: no separate eval env
+
+# configs/experiment/dqn/pong.yaml
+defaults:
+  - override /environment: pong_train
+  - override /environment@eval_environment: pong_eval
+```
+
+`src/train.py` and `src/eval.py` build the eval `Environment` via
+`cfg.get("eval_environment")` and pass it to the trainer constructor.
+
+Use this when training-time and evaluation-time observations should differ
+(e.g. Atari, where `EndOfLifeTransform` and `SignTransform` are train-only and
+`VecNorm` is dropped at eval because its running stats are not checkpointed).
 
 ## Trainer
 
@@ -187,26 +250,31 @@ checkpoint orchestration.
 src/
   train.py                  — entry point; instantiate(cfg.algorithm); environment **kwargs
   eval.py                   — evaluation entry point; same algorithm instantiation
+  networks.py               — Q-network factories: make_mlp_q_net, NatureDQN
   algorithms/
     base.py                 — BaseAlgorithm ABC; TrainingState and CollectorConfig dataclasses
     dqn.py                  — DQNAlgorithm; replay/network factories (defaults + setup contract)
   environments/
     environment.py          — Environment wrapper (holds factory kwargs, exposes make_env)
-    factory.py              — make_env: gymnasium + transforms list
+    factory.py              — make_env: gymnasium + transforms list + gym_kwargs/gym_backend
   trainers/
     BaseTrainer.py          — BaseTrainer ABC, TrainerEvent, Callback protocol, fire_callbacks
     StepTrainer.py          — StepTrainer (Collector-driven loop)
   callbacks/                — ProgressCallback, CheckpointCallback, WandBLogger, TensorBoardLogger
   utils/                    — device resolution, seeding, callback builders
 configs/
-  algorithm/dqn.yaml        — DQN _target_; scalar HPs; _partial_ replay_buffer + network
+  algorithm/dqn.yaml        — DQN HPs (CartPole defaults); _partial_ replay_buffer + network
+  algorithm/dqn_atari.yaml  — DQN HPs (Atari/NatureDQN defaults; pixel obs)
   environment/cartpole.yaml — env kwargs (name, transforms)
-  experiment/dqn/cartpole.yaml — composed experiment config
+  environment/pong_train.yaml — Atari Pong env (training transforms incl. EndOfLife + Sign + VecNorm)
+  environment/pong_eval.yaml  — Atari Pong env (eval transforms; drops EndOfLife + Sign + VecNorm)
+  experiment/dqn/cartpole.yaml — composed CartPole experiment
+  experiment/dqn/pong.yaml     — composed Atari Pong experiment
   logger/{wandb,tensorboard}.yaml
   paths/default.yaml
   train.yaml, eval.yaml
 tests/
-  test_smoke.py             — DQN-on-CartPole smoke test
+  test_smoke.py             — DQN-on-CartPole and DQN-on-Pong smoke tests
 ```
 
 ## Adding a new algorithm
@@ -214,7 +282,7 @@ tests/
 1. Create `src/algorithms/my_algo.py` following the kwargs pattern above. Use
    `Callable` factories for design choices (inline lambdas, `functools.partial`,
    or small helpers). Document the **call signature** each factory must satisfy
-   (e.g. `network(in_features, out_features)`).
+   (e.g. `network(obs_shape, num_actions)`).
 2. Implement `setup(make_env)`, `step(batch) -> dict`, `get_policy()`,
    `get_explore_policy()`, `get_collector_config()`,
    `_get_training_state()`, `_load_training_state()`.
@@ -239,5 +307,6 @@ tests/
 python src/train.py experiment=dqn/cartpole
 python src/train.py experiment=dqn/cartpole algorithm.lr=1e-3
 python src/train.py experiment=dqn/cartpole 'logger=[wandb]'  # experiments default to wandb; plain CLI defaults to tensorboard
+python src/train.py experiment=dqn/pong       # Atari Pong (40M frames, GPU)
 pytest tests/test_smoke.py -v
 ```

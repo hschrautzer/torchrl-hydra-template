@@ -11,6 +11,7 @@ independent transform state.
 from __future__ import annotations
 
 import importlib
+from contextlib import nullcontext
 from functools import partial
 from typing import Sequence
 
@@ -20,6 +21,8 @@ def make_env(
     num_envs: int = 1,
     device: str = "cpu",
     transforms: list | None = None,
+    gym_kwargs: dict | None = None,
+    gym_backend: str | None = None,
     **_: object,
 ):
     """Build a (possibly vectorised) ``TransformedEnv`` for a gymnasium env.
@@ -32,10 +35,21 @@ def make_env(
             moves data to ``device`` after collection.
         transforms: list of ``_target_``-keyed dicts to apply on top of the
             base env. ``None`` or empty -> bare base env.
+        gym_kwargs: extra kwargs passed straight to ``GymEnv`` (e.g.
+            ``{"frame_skip": 4, "from_pixels": True}``).
+        gym_backend: optional gym backend name for ``set_gym_backend``
+            (e.g. ``"gymnasium"``); if ``None`` torchrl picks the default.
     """
     worker_device = "cpu" if num_envs > 1 else device
 
-    env_fn = partial(_make_gymnasium_env, name=name, transforms=transforms, device=worker_device)
+    env_fn = partial(
+        _make_gymnasium_env,
+        name=name,
+        transforms=transforms,
+        device=worker_device,
+        gym_kwargs=gym_kwargs,
+        gym_backend=gym_backend,
+    )
 
     if num_envs > 1:
         from torchrl.envs import ParallelEnv
@@ -53,11 +67,24 @@ def _instantiate_transform(cfg: dict):
     return cls(**cfg)
 
 
-def _make_gymnasium_env(name: str, transforms: list | None, device: str):
+def _make_gymnasium_env(
+    name: str,
+    transforms: list | None,
+    device: str,
+    gym_kwargs: dict | None = None,
+    gym_backend: str | None = None,
+):
     from torchrl.envs import GymEnv, TransformedEnv
     from torchrl.envs.transforms import Compose
 
-    base_env = GymEnv(name, device=device)
+    backend_ctx = nullcontext()
+    if gym_backend is not None:
+        from torchrl.envs import set_gym_backend
+        backend_ctx = set_gym_backend(gym_backend)
+
+    with backend_ctx:
+        base_env = GymEnv(name, device=device, **(gym_kwargs or {}))
+
     if not transforms:
         return base_env
 

@@ -9,6 +9,8 @@ Run with:
 """
 from __future__ import annotations
 
+import pytest
+
 from tests.conftest import load_experiment_cfg
 
 
@@ -41,6 +43,34 @@ def _dqn_overrides() -> list[str]:
 def test_smoke_dqn_cartpole():
     """DQN on CartPole-v1: discrete actions, MLP Q-network, replay buffer."""
     cfg = load_experiment_cfg("dqn/cartpole", _dqn_overrides())
+    from src.train import _train
+
+    metrics = _train(cfg)
+    assert isinstance(metrics, dict)
+    assert len(metrics) > 0
+
+
+def _dqn_pong_overrides() -> list[str]:
+    # Same shape as the cartpole overrides: 600 frames in 100-frame batches,
+    # init_random_frames=100 so we hit the gradient path. Shrinks the 1M
+    # replay buffer to 500 to keep memory bounded during the smoke run.
+    return [
+        *BASE_OVERRIDES,
+        "trainer.total_frames=600",
+        "trainer.log_every_n_steps=100",
+        "algorithm.frames_per_batch=100",
+        "algorithm.init_random_frames=100",
+        "algorithm.batch_size=8",
+        "algorithm.num_updates=2",
+        "algorithm.annealing_frames=600",
+        "algorithm.replay_buffer.storage.max_size=500",
+    ]
+
+
+def test_smoke_dqn_pong():
+    """DQN on ALE/Pong-v5: pixel obs, NatureDQN CNN, eval-env split."""
+    pytest.importorskip("ale_py")  # ALE is an optional system dep
+    cfg = load_experiment_cfg("dqn/pong", _dqn_pong_overrides())
     from src.train import _train
 
     metrics = _train(cfg)

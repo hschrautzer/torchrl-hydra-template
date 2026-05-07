@@ -53,7 +53,9 @@ class BaseTrainer(ABC):
     Args:
         cfg: full Hydra config
         algorithm: algorithm instance (already ``__init__``'d, not yet set up)
-        environment: environment config wrapper
+        environment: environment config wrapper used for training
+        eval_environment: optional separate environment used by ``evaluate()``;
+            falls back to ``environment`` when ``None``
         callbacks: list of callback objects
     """
 
@@ -62,12 +64,14 @@ class BaseTrainer(ABC):
         cfg: DictConfig,
         algorithm: BaseAlgorithm,
         environment: Environment,
+        eval_environment: Environment | None = None,
         callbacks: list | None = None,
     ) -> None:
         self.cfg = cfg
         self.trainer_cfg = cfg.trainer
         self.algorithm = algorithm
         self.environment = environment
+        self.eval_environment = eval_environment or environment
         self.callbacks = callbacks or []
 
         self.device = resolve_device(
@@ -121,7 +125,7 @@ class BaseTrainer(ABC):
 
         Creates a fresh single-env for eval (separate from the train env).
         """
-        eval_env = self.environment.make_env(
+        eval_env = self.eval_environment.make_env(
             num_envs=1,
             device=str(self.device),
         )

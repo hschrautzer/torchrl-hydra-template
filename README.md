@@ -32,7 +32,14 @@ Two derived rules:
    If a knob shifts the learning curve, it goes on `__init__`. The trainer cannot
    silently change behaviour.
 
-> Currently only **DQN** is implemented; other algorithms will follow.
+**Implemented experiments:**
+
+| Algorithm | Environment | Config                          |
+|-----------|-------------|---------------------------------|
+| DQN       | CartPole-v1 | `experiment=dqn/cartpole`       |
+| DQN       | ALE/Pong-v5 | `experiment=dqn/pong`           |
+
+Other algorithms will follow.
 
 ## Main technologies
 
@@ -61,6 +68,13 @@ python src/train.py experiment=dqn/cartpole
 
 A full training run (500k frames, ~7 minutes on CPU) reproduces the torchrl SOTA
 reference for DQN-CartPole.
+
+For Atari Pong (mirrors the torchrl SOTA `dqn_atari.py` reference, 40M frames on
+GPU):
+
+```shell
+python src/train.py experiment=dqn/pong
+```
 
 ## Architecture
 
@@ -157,11 +171,49 @@ transforms:
   - _target_: torchrl.envs.transforms.StepCounter
 ```
 
+For envs that need extra `GymEnv` constructor arguments (e.g. `frame_skip`,
+`from_pixels` for pixel-based Atari), pass them via `gym_kwargs`, and pin the
+gym backend with `gym_backend`:
+
+```yaml
+# configs/environment/pong_train.yaml
+name: ALE/Pong-v5
+gym_backend: gymnasium
+gym_kwargs:
+  frame_skip: 4
+  from_pixels: true
+  pixels_only: false
+  categorical_action_encoding: true
+transforms:
+  - _target_: torchrl.envs.NoopResetEnv
+    noops: 30
+    random: true
+  # ...
+```
+
 `make_env` in `src/environments/factory.py` instantiates each transform fresh per
 call (so stateful transforms like `CatFrames` get independent state), composes
-them on top of `GymEnv(name)`, and wraps in `ParallelEnv` when `num_envs > 1`.
+them on top of `GymEnv(name, **gym_kwargs)`, and wraps in `ParallelEnv` when
+`num_envs > 1`.
 
 Backends supported: **gymnasium**.
+
+#### Separate evaluation environment
+
+For tasks where training-time observations differ from what evaluation should
+see (e.g. Atari, where the SOTA reference clips rewards and ends episodes on
+life loss during training but not during eval), declare a second env via the
+Hydra package override:
+
+```yaml
+# configs/experiment/dqn/pong.yaml
+defaults:
+  - override /environment: pong_train
+  - override /environment@eval_environment: pong_eval
+```
+
+When `eval_environment` is set, `BaseTrainer.evaluate()` uses it; otherwise it
+falls back to `environment`.
 
 ### Trainer
 
@@ -194,15 +246,20 @@ configs/
 ├── train.yaml              <- top-level defaults (trainer, checkpoint)
 ├── eval.yaml               <- evaluation defaults
 ├── algorithm/
-│   └── dqn.yaml            <- DQN HPs + _target_
+│   ├── dqn.yaml            <- DQN HPs (CartPole defaults)
+│   └── dqn_atari.yaml      <- DQN HPs (Atari/NatureDQN defaults)
 ├── environment/
-│   └── cartpole.yaml       <- env name + transforms
+│   ├── cartpole.yaml       <- env name + transforms
+│   ├── pong_train.yaml     <- Pong with EndOfLife + Sign + VecNorm (training)
+│   └── pong_eval.yaml      <- Pong without those transforms (evaluation)
 ├── logger/
 │   ├── wandb.yaml
 │   └── tensorboard.yaml
 ├── paths/default.yaml
 └── experiment/
-    └── dqn/cartpole.yaml   <- composed: algorithm + environment + trainer overrides
+    └── dqn/
+        ├── cartpole.yaml   <- composed: algorithm + environment + trainer overrides
+        └── pong.yaml       <- composed Atari Pong experiment
 ```
 
 ### Override hierarchy

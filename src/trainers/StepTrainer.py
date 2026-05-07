@@ -106,12 +106,21 @@ def _batch_metrics(batch: TensorDict) -> dict[str, float]:
                 episode_lengths[mask].float().mean().item()
             )
 
-    # Q-value of the action actually executed (one-hot * action_value, summed).
+    # Q-value of the action actually executed.
+    # Handles both one-hot encoding (action shape [B, A]) and categorical
+    # encoding (action shape [B], integer indices).
     action_value = flat.get("action_value", default=None)
     action = flat.get("action", default=None)
     if action_value is not None and action is not None:
-        out["train/q_values"] = (
-            (action_value * action).sum().item() / flat.numel()
-        )
+        if action.dim() == action_value.dim():
+            out["train/q_values"] = (
+                (action_value * action).sum().item() / flat.numel()
+            )
+        else:
+            out["train/q_values"] = (
+                action_value.gather(-1, action.long().unsqueeze(-1))
+                .mean()
+                .item()
+            )
 
     return out

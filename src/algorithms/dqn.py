@@ -22,7 +22,6 @@ Defaults match the torchrl SOTA reference for CartPole-v1
 from __future__ import annotations
 
 import functools
-import math
 from typing import Callable
 
 import torch
@@ -31,10 +30,11 @@ from tensordict import TensorDict
 from tensordict.nn import TensorDictModule, TensorDictSequential
 from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from torchrl.envs import EnvBase
-from torchrl.modules import EGreedyModule, MLP, QValueActor
+from torchrl.modules import EGreedyModule, QValueActor
 from torchrl.objectives import DQNLoss, HardUpdate
 
 from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
+from src.networks import make_mlp_q_net
 
 
 class DQNAlgorithm(BaseAlgorithm):
@@ -52,12 +52,15 @@ class DQNAlgorithm(BaseAlgorithm):
         replay_buffer: Callable[[], ReplayBuffer] = lambda: TensorDictReplayBuffer(
             storage=LazyTensorStorage(max_size=10_000, device="cpu"),
         ),
-        # Partial torchrl ``MLP``; ``setup`` fills ``in_features`` / ``out_features``.
-        network: Callable[[int, int], nn.Module] = functools.partial(
-            MLP,
+        # Factory called as ``network(obs_shape, num_actions)`` in ``setup``.
+        network: Callable[[tuple[int, ...], int], nn.Module] = functools.partial(
+            make_mlp_q_net,
             num_cells=[120, 84],
             activation_class=nn.ReLU,
         ),
+        # Observation key (e.g. ``"observation"`` for vector obs, ``"pixels"``
+        # for image obs). Used both for spec lookup and ``QValueActor.in_keys``.
+        obs_key: str = "observation",
         # --- Optimisation --------------------------------------------------
         lr: float = 2.5e-4,
         gamma: float = 0.99,
@@ -78,6 +81,7 @@ class DQNAlgorithm(BaseAlgorithm):
         super().__init__(device)
         self._make_replay_buffer = replay_buffer
         self._make_network = network
+        self.obs_key = obs_key
         self.lr = lr
         self.gamma = gamma
         self.batch_size = batch_size
@@ -99,18 +103,16 @@ class DQNAlgorithm(BaseAlgorithm):
     def setup(self, make_env: Callable[[], EnvBase]) -> None:
         # Read env specs from a short-lived proof environment.
         proof_env = make_env()
-        obs_shape = tuple(proof_env.observation_spec["observation"].shape)
+        obs_shape = tuple(proof_env.observation_spec[self.obs_key].shape)
         action_spec = proof_env.action_spec
         num_actions = int(action_spec.space.n)
 
         # 1. Q-network -> QValueActor (action_value head + greedy argmax).
-        q_net = self._make_network(
-            int(math.prod(obs_shape)), num_actions
-        ).to(self.device)
+        q_net = self._make_network(obs_shape, num_actions).to(self.device)
         self.q_actor = QValueActor(
             module=q_net,
             spec=action_spec,
-            in_keys=["observation"],
+            in_keys=[self.obs_key],
         ).to(self.device)
 
         # 2. Epsilon-greedy module wrapping the actor for exploration.
