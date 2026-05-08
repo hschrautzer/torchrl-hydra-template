@@ -34,10 +34,11 @@ Two derived rules:
 
 **Implemented experiments:**
 
-| Algorithm | Environment | Config                          |
-|-----------|-------------|---------------------------------|
-| DQN       | CartPole-v1 | `experiment=dqn/cartpole`       |
-| DQN       | ALE/Pong-v5 | `experiment=dqn/pong`           |
+| Algorithm | Environment    | Config                          |
+|-----------|----------------|---------------------------------|
+| DQN       | CartPole-v1    | `experiment=dqn/cartpole`       |
+| DQN       | ALE/Pong-v5    | `experiment=dqn/pong`           |
+| DDPG      | HalfCheetah-v4 | `experiment=ddpg/halfcheetah`   |
 
 Other algorithms will follow.
 
@@ -247,19 +248,23 @@ configs/
 ├── eval.yaml               <- evaluation defaults
 ├── algorithm/
 │   ├── dqn.yaml            <- DQN HPs (CartPole defaults)
-│   └── dqn_atari.yaml      <- DQN HPs (Atari/NatureDQN defaults)
+│   ├── dqn_atari.yaml      <- DQN HPs (Atari/NatureDQN defaults)
+│   └── ddpg.yaml           <- DDPG HPs (HalfCheetah defaults)
 ├── environment/
 │   ├── cartpole.yaml       <- env name + transforms
 │   ├── pong_train.yaml     <- Pong with EndOfLife + Sign + VecNorm (training)
-│   └── pong_eval.yaml      <- Pong without those transforms (evaluation)
+│   ├── pong_eval.yaml      <- Pong without those transforms (evaluation)
+│   └── halfcheetah.yaml    <- HalfCheetah-v4 (DoubleToFloat + InitTracker)
 ├── logger/
 │   ├── wandb.yaml
 │   └── tensorboard.yaml
 ├── paths/default.yaml
 └── experiment/
-    └── dqn/
-        ├── cartpole.yaml   <- composed: algorithm + environment + trainer overrides
-        └── pong.yaml       <- composed Atari Pong experiment
+    ├── dqn/
+    │   ├── cartpole.yaml   <- composed: algorithm + environment + trainer overrides
+    │   └── pong.yaml       <- composed Atari Pong experiment
+    └── ddpg/
+        └── halfcheetah.yaml <- composed DDPG HalfCheetah experiment
 ```
 
 ### Override hierarchy
@@ -331,3 +336,6 @@ to the reinforcement learning setting with TorchRL.
 The DQN reference implementation in `src/algorithms/dqn.py` is modelled on the
 torchrl SOTA reference at
 [`pytorch/rl/sota-implementations/dqn/dqn_cartpole.py`](https://github.com/pytorch/rl/blob/main/sota-implementations/dqn/dqn_cartpole.py).
+The DDPG reference implementation in `src/algorithms/ddpg.py` is modelled on the
+torchrl SOTA reference at
+[`pytorch/rl/sota-implementations/ddpg/ddpg.py`](https://github.com/pytorch/rl/blob/main/sota-implementations/ddpg/ddpg.py).

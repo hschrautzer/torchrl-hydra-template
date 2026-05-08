@@ -76,3 +76,31 @@ def test_smoke_dqn_pong():
     metrics = _train(cfg)
     assert isinstance(metrics, dict)
     assert len(metrics) > 0
+
+
+def _ddpg_overrides() -> list[str]:
+    # 600 frames in 100-frame batches: 1 warm-up batch then 5 update batches.
+    # batch_size=8 keeps sampling cheap while ensuring buffer >= batch_size after batch 1.
+    # Shrink the 1M replay buffer to 500 to keep memory bounded during the smoke run.
+    return [
+        *BASE_OVERRIDES,
+        "trainer.total_frames=600",
+        "trainer.log_every_n_steps=100",
+        "algorithm.frames_per_batch=100",
+        "algorithm.init_random_frames=100",
+        "algorithm.batch_size=8",
+        "algorithm.num_updates=2",
+        "algorithm.replay_buffer.storage.max_size=500",
+        "algorithm.exploration_noise.annealing_num_steps=600",
+    ]
+
+
+def test_smoke_ddpg_halfcheetah():
+    """DDPG on HalfCheetah-v4: continuous actions, MLP actor/critic, OU noise."""
+    pytest.importorskip("mujoco")  # MuJoCo is an optional system dep
+    cfg = load_experiment_cfg("ddpg/halfcheetah", _ddpg_overrides())
+    from src.train import _train
+
+    metrics = _train(cfg)
+    assert isinstance(metrics, dict)
+    assert len(metrics) > 0

@@ -9,10 +9,11 @@ A modular reinforcement learning research template built on
 
 Implemented experiments:
 
-| Algorithm | Environment | Experiment config       |
-|-----------|-------------|-------------------------|
-| DQN       | CartPole-v1 | `experiment=dqn/cartpole` |
-| DQN       | ALE/Pong-v5 | `experiment=dqn/pong`     |
+| Algorithm | Environment    | Experiment config             |
+|-----------|----------------|-------------------------------|
+| DQN       | CartPole-v1    | `experiment=dqn/cartpole`     |
+| DQN       | ALE/Pong-v5    | `experiment=dqn/pong`         |
+| DDPG      | HalfCheetah-v4 | `experiment=ddpg/halfcheetah` |
 
 Other algorithms will follow.
 
@@ -80,15 +81,22 @@ Rules:
 - `BaseAlgorithm.__init__(device)` — **no `cfg` parameter**. Algorithms read env
   specs from `make_env()` inside `setup()`.
 - `replay_buffer` is a **no-arg** factory returning a `ReplayBuffer`.
-- `network` is a factory called as **`network(obs_shape, num_actions)`** —
+- `network` (DQN) is a factory called as **`network(obs_shape, num_actions)`** —
   positional `obs_shape` is the raw observation shape tuple (e.g. `(4,)` for
   CartPole, `(4, 84, 84)` for stacked Atari frames) and `num_actions` is the
-  discrete action count. Use the helpers in `src/networks.py`:
+  discrete action count. For DDPG, `actor_network` and `value_network` use the
+  same call signature with the continuous action vector size. Use the helpers
+  in `src/networks.py`:
     - `make_mlp_q_net(obs_shape, num_actions, *, num_cells, activation_class)` —
       flattens `obs_shape` into a torchrl `MLP`. Default for vector observations.
     - `NatureDQN(obs_shape, num_actions, *, ...)` — Mnih et al. 2015 ConvNet+MLP
       head. Default for image observations.
-  Both keep everything after the two positional args **kwarg-only**, so a Hydra
+    - `make_mlp_ddpg_actor(obs_shape, action_dim, *, num_cells, activation_class)` —
+      MLP body for a deterministic actor (DDPG); no final tanh, the algorithm
+      wraps it in `TanhModule` to rescale to the action spec.
+    - `make_mlp_ddpg_critic(obs_shape, action_dim, *, num_cells, activation_class)` —
+      state-action critic; takes `[obs, action]` concatenated by `ValueOperator`.
+  All keep everything after the two positional args **kwarg-only**, so a Hydra
   `_partial_` config can pre-bind kwargs without colliding with `setup()`'s call.
 - `obs_key` selects which tensordict key the observation comes from. Vector
   envs (CartPole) use `"observation"`; pixel envs (Atari with `from_pixels=True`)
@@ -250,10 +258,12 @@ checkpoint orchestration.
 src/
   train.py                  — entry point; instantiate(cfg.algorithm); environment **kwargs
   eval.py                   — evaluation entry point; same algorithm instantiation
-  networks.py               — Q-network factories: make_mlp_q_net, NatureDQN
+  networks.py               — network factories: make_mlp_q_net, NatureDQN,
+                              make_mlp_ddpg_actor, make_mlp_ddpg_critic
   algorithms/
     base.py                 — BaseAlgorithm ABC; TrainingState and CollectorConfig dataclasses
     dqn.py                  — DQNAlgorithm; replay/network factories (defaults + setup contract)
+    ddpg.py                 — DDPGAlgorithm; actor/critic/replay/noise factories
   environments/
     environment.py          — Environment wrapper (holds factory kwargs, exposes make_env)
     factory.py              — make_env: gymnasium + transforms list + gym_kwargs/gym_backend
@@ -265,16 +275,19 @@ src/
 configs/
   algorithm/dqn.yaml        — DQN HPs (CartPole defaults); _partial_ replay_buffer + network
   algorithm/dqn_atari.yaml  — DQN HPs (Atari/NatureDQN defaults; pixel obs)
+  algorithm/ddpg.yaml       — DDPG HPs (HalfCheetah defaults); _partial_ actor/critic/noise
   environment/cartpole.yaml — env kwargs (name, transforms)
   environment/pong_train.yaml — Atari Pong env (training transforms incl. EndOfLife + Sign + VecNorm)
   environment/pong_eval.yaml  — Atari Pong env (eval transforms; drops EndOfLife + Sign + VecNorm)
+  environment/halfcheetah.yaml — HalfCheetah-v4 (DoubleToFloat + InitTracker)
   experiment/dqn/cartpole.yaml — composed CartPole experiment
   experiment/dqn/pong.yaml     — composed Atari Pong experiment
+  experiment/ddpg/halfcheetah.yaml — composed DDPG HalfCheetah experiment
   logger/{wandb,tensorboard}.yaml
   paths/default.yaml
   train.yaml, eval.yaml
 tests/
-  test_smoke.py             — DQN-on-CartPole and DQN-on-Pong smoke tests
+  test_smoke.py             — DQN-on-CartPole, DQN-on-Pong, DDPG-on-HalfCheetah smoke tests
 ```
 
 ## Adding a new algorithm
@@ -307,6 +320,7 @@ tests/
 python src/train.py experiment=dqn/cartpole
 python src/train.py experiment=dqn/cartpole algorithm.lr=1e-3
 python src/train.py experiment=dqn/cartpole 'logger=[wandb]'  # experiments default to wandb; plain CLI defaults to tensorboard
-python src/train.py experiment=dqn/pong       # Atari Pong (40M frames, GPU)
+python src/train.py experiment=dqn/pong            # Atari Pong (40M frames, GPU)
+python src/train.py experiment=ddpg/halfcheetah    # DDPG continuous control (1M frames)
 pytest tests/test_smoke.py -v
 ```

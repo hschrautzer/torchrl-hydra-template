@@ -1,9 +1,11 @@
-"""Q-network factories used by ``configs/algorithm/*.yaml``.
+"""Network factories used by ``configs/algorithm/*.yaml``.
 
-Each factory takes ``(obs_shape, num_actions)`` positionally and keeps the
+Each factory takes ``(obs_shape, action_dim)`` positionally and keeps the
 rest as keyword-only args, so a Hydra ``_partial_`` config can pre-bind the
-kwargs while ``DQNAlgorithm.setup()`` supplies the runtime shape and action
-count.
+kwargs while the algorithm's ``setup()`` supplies the runtime shape and
+action count. ``action_dim`` is the discrete action count for value-based
+algorithms (DQN) and the continuous action vector size for actor/critic
+algorithms (DDPG).
 """
 from __future__ import annotations
 
@@ -26,6 +28,48 @@ def make_mlp_q_net(
     return MLP(
         in_features=int(math.prod(obs_shape)),
         out_features=num_actions,
+        num_cells=list(num_cells),
+        activation_class=activation_class,
+    )
+
+
+def make_mlp_ddpg_actor(
+    obs_shape: Sequence[int],
+    action_dim: int,
+    *,
+    num_cells: Sequence[int],
+    activation_class: Type[nn.Module],
+) -> nn.Module:
+    """MLP body for a DDPG deterministic actor.
+
+    Returns an MLP mapping the flattened observation to ``action_dim``
+    unbounded outputs. The algorithm wraps this with ``TanhModule`` to
+    rescale to the action spec, so this factory must NOT apply tanh itself.
+    """
+    return MLP(
+        in_features=int(math.prod(obs_shape)),
+        out_features=action_dim,
+        num_cells=list(num_cells),
+        activation_class=activation_class,
+    )
+
+
+def make_mlp_ddpg_critic(
+    obs_shape: Sequence[int],
+    action_dim: int,
+    *,
+    num_cells: Sequence[int],
+    activation_class: Type[nn.Module],
+) -> nn.Module:
+    """MLP body for a DDPG state-action value (critic).
+
+    Returns an MLP mapping the concatenated ``[obs, action]`` vector to a
+    single Q-value. ``ValueOperator`` concatenates inputs along the last
+    dim before calling the module.
+    """
+    return MLP(
+        in_features=int(math.prod(obs_shape)) + int(action_dim),
+        out_features=1,
         num_cells=list(num_cells),
         activation_class=activation_class,
     )
