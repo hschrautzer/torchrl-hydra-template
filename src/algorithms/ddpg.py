@@ -75,7 +75,7 @@ class DDPGAlgorithm(BaseAlgorithm):
         # --- Optimisation --------------------------------------------------
         lr_actor: float = 3e-4,
         lr_value: float = 3e-4,
-        weight_decay: float = 1e-4,
+        weight_decay: float = 0.0,
         gamma: float = 0.99,
         tau: float = 0.005,        # SoftUpdate uses ``tau`` directly (Polyak step size)
         batch_size: int = 256,
@@ -202,10 +202,7 @@ class DDPGAlgorithm(BaseAlgorithm):
             sample = self.replay_buffer.sample(self.batch_size).to(self.device)
             self.optimizer.zero_grad(set_to_none=True)
             loss_td = self.loss_module(sample)
-            # Sum actor + critic losses; autograd routes each gradient to its
-            # own param set since ``actor_network_params`` and ``value_network_params``
-            # are disjoint. Single ``optimizer.step()`` updates both via ``group_optimizers``.
-            loss_td.sum(reduce=True).backward()
+            (loss_td["loss_actor"] + loss_td["loss_value"]).backward()
             nn.utils.clip_grad_norm_(
                 list(self.loss_module.actor_network_params.values(True, True))
                 + list(self.loss_module.value_network_params.values(True, True)),

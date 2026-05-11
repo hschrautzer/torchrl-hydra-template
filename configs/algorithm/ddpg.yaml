@@ -31,12 +31,12 @@ exploration_noise:
   _partial_: true
   _target_: torchrl.modules.OrnsteinUhlenbeckProcessModule
   annealing_num_steps: 1_000_000
-  safe: false
+  safe: true
 
 # Optimisation
 lr_actor: 3.0e-4
 lr_value: 3.0e-4
-weight_decay: 1.0e-4
+weight_decay: 0.0
 gamma: 0.99
 tau: 0.005
 batch_size: 256

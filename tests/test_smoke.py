@@ -104,3 +104,26 @@ def test_smoke_ddpg_halfcheetah():
     metrics = _train(cfg)
     assert isinstance(metrics, dict)
     assert len(metrics) > 0
+
+
+def _a2c_overrides() -> list[str]:
+    # 600 frames in 120-frame rollouts: 5 collections, 6 mini-batches each
+    # (mini_batch_size=20). On-policy: no replay buffer, no warm-up.
+    return [
+        *BASE_OVERRIDES,
+        "trainer.total_frames=600",
+        "trainer.log_every_n_steps=100",
+        "algorithm.frames_per_batch=120",
+        "algorithm.mini_batch_size=20",
+    ]
+
+
+def test_smoke_a2c_halfcheetah():
+    """A2C on HalfCheetah-v4: continuous actions, stochastic actor + GAE."""
+    pytest.importorskip("mujoco")  # MuJoCo is an optional system dep
+    cfg = load_experiment_cfg("a2c/halfcheetah", _a2c_overrides())
+    from src.train import _train
+
+    metrics = _train(cfg)
+    assert isinstance(metrics, dict)
+    assert len(metrics) > 0

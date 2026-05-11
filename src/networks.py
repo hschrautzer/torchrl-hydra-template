@@ -75,6 +75,49 @@ def make_mlp_ddpg_critic(
     )
 
 
+def make_mlp_a2c_actor(
+    obs_shape: Sequence[int],
+    action_dim: int,
+    *,
+    num_cells: Sequence[int],
+    activation_class: Type[nn.Module],
+) -> nn.Module:
+    """MLP body for an A2C stochastic actor.
+
+    Returns an MLP mapping the flattened observation to ``2 * action_dim``
+    outputs. The algorithm chains it with ``NormalParamExtractor`` to split
+    the output into ``loc`` and (positive) ``scale`` for a TanhNormal policy.
+    """
+    return MLP(
+        in_features=int(math.prod(obs_shape)),
+        out_features=2 * int(action_dim),
+        num_cells=list(num_cells),
+        activation_class=activation_class,
+    )
+
+
+def make_mlp_a2c_value(
+    obs_shape: Sequence[int],
+    action_dim: int,
+    *,
+    num_cells: Sequence[int],
+    activation_class: Type[nn.Module],
+) -> nn.Module:
+    """MLP body for an A2C state-value critic.
+
+    Takes ``(obs_shape, action_dim)`` for signature parity with the actor
+    factory; ``action_dim`` is unused — the critic estimates V(s) only.
+    Returns an MLP mapping the flattened observation to a single value.
+    """
+    del action_dim  # signature parity with actor factory
+    return MLP(
+        in_features=int(math.prod(obs_shape)),
+        out_features=1,
+        num_cells=list(num_cells),
+        activation_class=activation_class,
+    )
+
+
 def NatureDQN(
     obs_shape: Sequence[int],
     num_actions: int,

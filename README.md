@@ -39,6 +39,7 @@ Two derived rules:
 | DQN       | CartPole-v1    | `experiment=dqn/cartpole`       |
 | DQN       | ALE/Pong-v5    | `experiment=dqn/pong`           |
 | DDPG      | HalfCheetah-v4 | `experiment=ddpg/halfcheetah`   |
+| A2C       | HalfCheetah-v4 | `experiment=a2c/halfcheetah`    |
 
 Other algorithms will follow.
 
@@ -249,7 +250,8 @@ configs/
 ├── algorithm/
 │   ├── dqn.yaml            <- DQN HPs (CartPole defaults)
 │   ├── dqn_atari.yaml      <- DQN HPs (Atari/NatureDQN defaults)
-│   └── ddpg.yaml           <- DDPG HPs (HalfCheetah defaults)
+│   ├── ddpg.yaml           <- DDPG HPs (HalfCheetah defaults)
+│   └── a2c.yaml            <- A2C HPs (HalfCheetah/MuJoCo defaults)
 ├── environment/
 │   ├── cartpole.yaml       <- env name + transforms
 │   ├── pong_train.yaml     <- Pong with EndOfLife + Sign + VecNorm (training)
@@ -263,8 +265,10 @@ configs/
     ├── dqn/
     │   ├── cartpole.yaml   <- composed: algorithm + environment + trainer overrides
     │   └── pong.yaml       <- composed Atari Pong experiment
-    └── ddpg/
-        └── halfcheetah.yaml <- composed DDPG HalfCheetah experiment
+    ├── ddpg/
+    │   └── halfcheetah.yaml <- composed DDPG HalfCheetah experiment
+    └── a2c/
+        └── halfcheetah.yaml <- composed A2C HalfCheetah experiment
 ```
 
 ### Override hierarchy
@@ -339,3 +343,6 @@ torchrl SOTA reference at
 The DDPG reference implementation in `src/algorithms/ddpg.py` is modelled on the
 torchrl SOTA reference at
 [`pytorch/rl/sota-implementations/ddpg/ddpg.py`](https://github.com/pytorch/rl/blob/main/sota-implementations/ddpg/ddpg.py).
+The A2C reference implementation in `src/algorithms/a2c.py` is modelled on the
+torchrl SOTA reference at
+[`pytorch/rl/sota-implementations/a2c/a2c_mujoco.py`](https://github.com/pytorch/rl/blob/main/sota-implementations/a2c/a2c_mujoco.py).

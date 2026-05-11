@@ -14,6 +14,7 @@ Implemented experiments:
 | DQN       | CartPole-v1    | `experiment=dqn/cartpole`     |
 | DQN       | ALE/Pong-v5    | `experiment=dqn/pong`         |
 | DDPG      | HalfCheetah-v4 | `experiment=ddpg/halfcheetah` |
+| A2C       | HalfCheetah-v4 | `experiment=a2c/halfcheetah`  |
 
 Other algorithms will follow.
 
@@ -96,6 +97,12 @@ Rules:
       wraps it in `TanhModule` to rescale to the action spec.
     - `make_mlp_ddpg_critic(obs_shape, action_dim, *, num_cells, activation_class)` —
       state-action critic; takes `[obs, action]` concatenated by `ValueOperator`.
+    - `make_mlp_a2c_actor(obs_shape, action_dim, *, num_cells, activation_class)` —
+      MLP body for an A2C stochastic actor; outputs `2 * action_dim` features
+      that `NormalParamExtractor` splits into `loc` and `scale` for TanhNormal.
+    - `make_mlp_a2c_value(obs_shape, action_dim, *, num_cells, activation_class)` —
+      state-value (V(s)) critic; `action_dim` is unused but kept for signature
+      parity with the actor factory.
   All keep everything after the two positional args **kwarg-only**, so a Hydra
   `_partial_` config can pre-bind kwargs without colliding with `setup()`'s call.
 - `obs_key` selects which tensordict key the observation comes from. Vector
@@ -149,6 +156,18 @@ algorithm internals. Per-batch metrics (`train/episode_reward`,
 batch and merged into the algorithm's metrics dict at logging boundaries.
 This mirrors the torchrl SOTA DQN reference and keeps batch-level bookkeeping
 out of the algorithm.
+
+### On-policy variant (A2C)
+
+A2C drops three of those internals entirely: no long-term replay buffer, no
+target networks, no warm-up. Each `step(batch)` runs `GAE` on the rollout
+under `no_grad`, refills a one-shot buffer with `SamplerWithoutReplacement`,
+and does one epoch of mini-batch updates with `A2CLoss`. The buffer in
+`a2c.py` is built directly in `setup()` (not exposed as a `_partial_`
+factory) because its size is locked to `frames_per_batch / mini_batch_size`
+— it's an implementation detail of the on-policy schedule, not a research
+choice. `get_collector_config()` returns `init_random_frames=0` since the
+stochastic actor explores from frame zero.
 
 ## Instantiation in `src/train.py` / `src/eval.py`
 
@@ -259,11 +278,13 @@ src/
   train.py                  — entry point; instantiate(cfg.algorithm); environment **kwargs
   eval.py                   — evaluation entry point; same algorithm instantiation
   networks.py               — network factories: make_mlp_q_net, NatureDQN,
-                              make_mlp_ddpg_actor, make_mlp_ddpg_critic
+                              make_mlp_ddpg_actor, make_mlp_ddpg_critic,
+                              make_mlp_a2c_actor, make_mlp_a2c_value
   algorithms/
     base.py                 — BaseAlgorithm ABC; TrainingState and CollectorConfig dataclasses
     dqn.py                  — DQNAlgorithm; replay/network factories (defaults + setup contract)
     ddpg.py                 — DDPGAlgorithm; actor/critic/replay/noise factories
+    a2c.py                  — A2CAlgorithm; on-policy actor/critic with GAE + A2CLoss
   environments/
     environment.py          — Environment wrapper (holds factory kwargs, exposes make_env)
     factory.py              — make_env: gymnasium + transforms list + gym_kwargs/gym_backend
@@ -276,6 +297,7 @@ configs/
   algorithm/dqn.yaml        — DQN HPs (CartPole defaults); _partial_ replay_buffer + network
   algorithm/dqn_atari.yaml  — DQN HPs (Atari/NatureDQN defaults; pixel obs)
   algorithm/ddpg.yaml       — DDPG HPs (HalfCheetah defaults); _partial_ actor/critic/noise
+  algorithm/a2c.yaml        — A2C HPs (HalfCheetah/MuJoCo defaults); _partial_ actor/value
   environment/cartpole.yaml — env kwargs (name, transforms)
   environment/pong_train.yaml — Atari Pong env (training transforms incl. EndOfLife + Sign + VecNorm)
   environment/pong_eval.yaml  — Atari Pong env (eval transforms; drops EndOfLife + Sign + VecNorm)
@@ -283,11 +305,12 @@ configs/
   experiment/dqn/cartpole.yaml — composed CartPole experiment
   experiment/dqn/pong.yaml     — composed Atari Pong experiment
   experiment/ddpg/halfcheetah.yaml — composed DDPG HalfCheetah experiment
+  experiment/a2c/halfcheetah.yaml — composed A2C HalfCheetah experiment
   logger/{wandb,tensorboard}.yaml
   paths/default.yaml
   train.yaml, eval.yaml
 tests/
-  test_smoke.py             — DQN-on-CartPole, DQN-on-Pong, DDPG-on-HalfCheetah smoke tests
+  test_smoke.py             — DQN-on-CartPole, DQN-on-Pong, DDPG-on-HalfCheetah, A2C-on-HalfCheetah smoke tests
 ```
 
 ## Adding a new algorithm
@@ -322,5 +345,6 @@ python src/train.py experiment=dqn/cartpole algorithm.lr=1e-3
 python src/train.py experiment=dqn/cartpole 'logger=[wandb]'  # experiments default to wandb; plain CLI defaults to tensorboard
 python src/train.py experiment=dqn/pong            # Atari Pong (40M frames, GPU)
 python src/train.py experiment=ddpg/halfcheetah    # DDPG continuous control (1M frames)
+python src/train.py experiment=a2c/halfcheetah     # A2C on-policy continuous control (1M frames)
 pytest tests/test_smoke.py -v
 ```

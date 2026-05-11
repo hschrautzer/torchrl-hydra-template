@@ -14,7 +14,7 @@ dependencies = [
     "omegaconf>=2.3.0",
     "hydra-colorlog>=1.2.0",
     # Environments
-    "gymnasium[classic-control]>=0.29.0",
+    "gymnasium[classic-control,mujoco]>=0.29.0",
     # Logging
     "wandb>=0.17.0",
     "tensorboard>=2.16.0",
