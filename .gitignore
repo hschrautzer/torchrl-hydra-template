@@ -5,6 +5,9 @@ outputs/
 # Weights & Biases (root-level fallback)
 wandb/
 
+# Tensorboard
+runs/
+
 # Python
 __pycache__/
 *.py[cod]
