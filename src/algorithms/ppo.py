@@ -8,8 +8,37 @@ import time
 import numpy as np
 import random
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions.categorical import Categorical
 from distutils.util import strtobool
 from torch.utils.tensorboard import SummaryWriter
+import gymnasium as gym
+
+
+def make_env(gym_id, seed, idx, capture_video, run_name):
+    def thunk():
+        env = gym.make(gym_id, render_mode="rgb_array")
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, video_folder="videos", episode_trigger=lambda t: t % 100 == 0)
+        # Deprecated in modern gymnasium versions. Use envs.reset(seed)
+        # env.seed(seed)
+        # env.action_space.seed(seed)
+        # env.observation_space.seed(seed)
+        return env
+    return thunk
+
+def layer_init(layer, std = np.sqrt(2), bias_const = 0):
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
+
+class Agent(nn.Module):
+    def __init__(self, envs):
+        super(Agent, self).__init__()
+        # Define critic at 10:44.
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -23,10 +52,15 @@ def parse_args():
                         nargs='?', const=True, help='if toggled, `torch.backends.cudnn.deterministic=False`')
     parser.add_argument('--cuda',type=lambda x:bool(strtobool(x)), default=True,
                         nargs='?',const=True, help='if toggled, cuda will not be enabled by default')
-    parser.add_argument('--track',type=lambda x:bool(strtobool(x)), default=True,
+    parser.add_argument('--track',type=lambda x:bool(strtobool(x)), default=False,
                         nargs='?',const=True, help='if toggled, the experiment is tracked with wandb')
     parser.add_argument('--wandb-project-name',type=str, default='CleanRL',help="wandb project name")
     parser.add_argument('--wandb-entity',type=str,default=None,help='the entity (team) of wandbs project')
+    parser.add_argument('--capture-video',type=lambda x:bool(strtobool(x)), default=False,
+                        nargs='?',const=True,help='if video shall be recorded.')
+
+    # Algorithm specific args
+    parser.add_argument('--n-envs',type=int,default=4, help='number of environments')
     args = parser.parse_args()
     return args
 
@@ -57,7 +91,12 @@ if __name__=="__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
+    # Device setup
     device = torch.device("cude" if torch.cuda.is_available() and args.cuda else "cpu")
 
-    for i in range(100):
-        writer.add_scalar("test_loss",i*2,global_step=i)
+    # Env setup
+    envs = gym.vector.SyncVectorEnv([make_env(args.gym_id,seed=args.seed + i,idx=i,capture_video=args.capture_video,
+                                              run_name=run_name ) for i in range(args.n_envs)])
+    assert isinstance(envs.single_action_space,gym.spaces.Discrete), "only discrete Action Spaces supported."
+    print(f"envs.single_observation_space.shape: {envs.single_observation_space.shape}")
+    print(f"envs.single_action_space.n: {envs.single_action_space.n}")
