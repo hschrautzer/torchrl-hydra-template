@@ -38,7 +38,24 @@ def layer_init(layer, std = np.sqrt(2), bias_const = 0):
 class Agent(nn.Module):
     def __init__(self, envs):
         super(Agent, self).__init__()
-        # Define critic at 10:44.
+        self.critic = nn.Sequential(
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(),64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64,64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64,1),std=1)
+        )
+        self.actor = nn.Sequential(
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64,64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64,envs.single_action_space.n), std=0.01),
+        )
+
+    def get_value(self, x):
+        # at 14:10
+        pass
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -61,7 +78,9 @@ def parse_args():
 
     # Algorithm specific args
     parser.add_argument('--n-envs',type=int,default=4, help='number of environments')
+    parser.add_argument('--num-steps',type=int,default=128, help='the number of steps to run in each env per policy rollout')
     args = parser.parse_args()
+    args.batch_size = int(args.n_envs * args.num_steps)
     return args
 
 if __name__=="__main__":
@@ -100,3 +119,22 @@ if __name__=="__main__":
     assert isinstance(envs.single_action_space,gym.spaces.Discrete), "only discrete Action Spaces supported."
     print(f"envs.single_observation_space.shape: {envs.single_observation_space.shape}")
     print(f"envs.single_action_space.n: {envs.single_action_space.n}")
+
+    agent = Agent(envs=envs).to(device)
+    optimizer = optim.Adam(agent.parameters(),lr=args.learning_rate,eps=1e-5)
+
+    # Setup storage
+    obs = torch.zeros((args.num_steps, args.n_envs) + envs.single_observation_space.shape).to(device) # use tuple addition -> eg. (num_steps, n_envs, 4)
+    actions = torch.zeros((args.num_steps, args.n_envs) + envs.single_action_space.shape).to(device)
+    logprobs = torch.zeros((args.num_steps, args.n_envs)).to(device)
+    rewards = torch.zeros((args.num_steps, args.n_envs)).to(device)
+    truncations = torch.zeros((args.num_steps, args.n_envs)).to(device)
+    terminations = torch.zeros((args.num_steps, args.n_envs)).to(device)
+    values = torch.zeros((args.num_steps, args.n_envs)).to(device)
+
+    # DO not modify
+    global_step = 0
+    start_time = time.time()
+    next_obs = torch.Tensor(envs.reset(seed=[args.seed + i for i in range(args.n_envs)])[0]).to(device)
+    next_done = torch.zeros(args.n_envs).to(device)
+    num_updates = args.total_timesteps // args.batch_size
