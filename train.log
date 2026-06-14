@@ -22,3 +22,28 @@
 [2026-06-14 15:52:28,306][matplotlib.font_manager][INFO] - generated new fontManager
 [2026-06-14 16:16:04,791][matplotlib][WARNING] - /Users/hendrikschrautzer/.matplotlib is not a writable directory
 [2026-06-14 16:16:04,793][matplotlib][WARNING] - Matplotlib created a temporary cache directory at /var/folders/dp/j32wtmvj6n9727g16dt5k1rr0000gn/T/matplotlib-ap16clqb because there was an issue with the default path (/Users/hendrikschrautzer/.matplotlib); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+[2026-06-14 16:16:09,819][matplotlib.font_manager][WARNING] - Matplotlib is building the font cache; this may take a moment.
+[2026-06-14 16:16:18,791][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/SFIndia.ttc: Can not load face (SFNT font table missing; error code 0x8e)
+[2026-06-14 16:16:18,813][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 16:16:18,815][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+[2026-06-14 16:16:18,817][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc: Can not load face (locations (loca) table missing; error code 0x90)
+[2026-06-14 16:16:18,825][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 16:16:18,841][matplotlib.font_manager][INFO] - generated new fontManager
+[2026-06-14 16:17:30,998][matplotlib][WARNING] - /Users/hendrikschrautzer/.matplotlib is not a writable directory
+[2026-06-14 16:17:30,999][matplotlib][WARNING] - Matplotlib created a temporary cache directory at /var/folders/dp/j32wtmvj6n9727g16dt5k1rr0000gn/T/matplotlib-mu2hknwd because there was an issue with the default path (/Users/hendrikschrautzer/.matplotlib); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+[2026-06-14 16:17:36,023][matplotlib.font_manager][WARNING] - Matplotlib is building the font cache; this may take a moment.
+[2026-06-14 16:17:44,369][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+[2026-06-14 16:17:44,418][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/SFIndia.ttc: Can not load face (SFNT font table missing; error code 0x8e)
+[2026-06-14 16:17:44,421][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 16:17:44,429][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc: Can not load face (locations (loca) table missing; error code 0x90)
+[2026-06-14 16:17:44,455][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 16:17:44,472][matplotlib.font_manager][INFO] - generated new fontManager
+[2026-06-14 16:24:58,127][matplotlib][WARNING] - /Users/hendrikschrautzer/.matplotlib is not a writable directory
+[2026-06-14 16:24:58,128][matplotlib][WARNING] - Matplotlib created a temporary cache directory at /var/folders/dp/j32wtmvj6n9727g16dt5k1rr0000gn/T/matplotlib-8jaw8z5n because there was an issue with the default path (/Users/hendrikschrautzer/.matplotlib); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+[2026-06-14 16:25:03,159][matplotlib.font_manager][WARNING] - Matplotlib is building the font cache; this may take a moment.
+[2026-06-14 16:25:12,248][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+[2026-06-14 16:25:12,300][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/SFIndia.ttc: Can not load face (SFNT font table missing; error code 0x8e)
+[2026-06-14 16:25:12,314][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 16:25:12,344][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 16:25:12,405][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc: Can not load face (locations (loca) table missing; error code 0x90)
+[2026-06-14 16:25:12,420][matplotlib.font_manager][INFO] - generated new fontManager

@@ -41,7 +41,7 @@ The Implementation details from the blog post are (the implementation details ar
 """
 from typing import Callable
 from tensordict import TensorDict
-from tensordict.nn import TensorDictModule, TensorDictModuleBase
+from tensordict.nn import TensorDictModule, TensorDictModuleBase, TensorDictSequential
 
 from torch.distributions import Categorical # instead of OneHotCategorical
 from torchrl.envs import EnvBase
@@ -207,6 +207,20 @@ class PPO(BaseAlgorithm):
             default_interaction_type=ExplorationType.RANDOM
         ).to(self.device)
 
+        # Remove this warning: DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated,
+        # and will error in future. Ensure you extract a single element from your array before performing
+        # this operation. (Deprecated NumPy 1.25.)
+        squeeze_action = TensorDictModule(
+            lambda action: action.squeeze(-1),
+            in_keys=["action"],
+            out_keys=["action"],
+        )
+
+        self.actor = TensorDictSequential(
+            self.actor,
+            squeeze_action,
+        ).to(self.device)
+
         # .... Critic
 
         # The TensorDict wrapper for a value function is given by ValueOperator. It reads observation and
@@ -290,17 +304,7 @@ class PPO(BaseAlgorithm):
                 param_group["lr"] = lr_now
 
         batch: TensorDict = batch.to(self.device)
-        # Compte GAE first -> then flatten for minibatches
-
-        if self._obs_key == "pixels":
-            pixels = batch[self._obs_key]
-            print(
-                "pixels:",
-                "dtype=", pixels.dtype,
-                "shape=", tuple(pixels.shape),
-                "min=", pixels.min().item(),
-                "max=", pixels.max().item(),
-            )
+        # Compute GAE first -> then flatten for minibatches
 
         # Compute fixed old values, advantages, and value targets before updating.
         # GAE writes "advantage", "value_target", and "state_value" in the tensordict batch

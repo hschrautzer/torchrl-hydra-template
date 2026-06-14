@@ -96,7 +96,9 @@ class NaturePPOActorCritic(nn.Module):
         batch_shape = obs.shape[:-3]
         obs = obs.reshape(-1,*obs.shape[-3:]) # now [1,4,84,84]
         cnn_output = self.cnn_network(obs) # [1,3136]
-        return self.hidden(cnn_output) # [512]
+        hidden = self.hidden(cnn_output) # [512]
+        return hidden.reshape(*batch_shape,-1)
+
 
     def forward_actor(self, obs: torch.Tensor) -> torch.Tensor:
         return self.actor(self.encode(obs))
