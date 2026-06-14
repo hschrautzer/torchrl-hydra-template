@@ -120,7 +120,7 @@ class Agent(nn.Module):
             nn.ReLU(),
         )
         self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
-        self.critic = layer_init(nn.Linear(512, 1), std=0.01)
+        self.critic = layer_init(nn.Linear(512, 1), std=1.0)
 
     # Implementation Detail [9]: Rescale observation range pixel values
     def get_value(self, x):

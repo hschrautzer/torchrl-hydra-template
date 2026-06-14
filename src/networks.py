@@ -11,11 +11,136 @@ from __future__ import annotations
 
 import math
 from typing import Sequence, Type
-import numpy as np
 import torch
 import torch.nn as nn
 from torchrl.modules import ConvNet, MLP
 
+# ================== All of the following are just helper classes for factor initialization below ==========
+
+class NaturePPOActorCritic(nn.Module):
+    """ Shared Nature-DQN-style CNN network with PPO actor and critic heads.
+    Considers Implementation Details [8,9] (see ppo_monolith_atari.py)
+    """
+    @staticmethod
+    def _layer_init_conv_ppo(layer: nn.Conv2d,*,std: float = math.sqrt(2),bias_const: float = 0.0) -> nn.Conv2d:
+        nn.init.orthogonal_(layer.weight, std)
+        nn.init.constant_(layer.bias, bias_const)
+        return layer
+
+    @staticmethod
+    def _layer_init_linear_ppo(layer: nn.Linear,*,std: float = math.sqrt(2),bias_const: float = 0.0) -> nn.Linear:
+        nn.init.orthogonal_(layer.weight, std)
+        nn.init.constant_(layer.bias, bias_const)
+        return layer
+
+    def __init__(self,obs_shape: Sequence[int],num_actions: int,*,num_cells_cnn: Sequence[int] = (32, 64, 64),
+                 kernel_sizes: Sequence[int] = (8, 4, 3),strides: Sequence[int] = (4, 2, 1),hidden_features: int = 512,
+                 activation_class: Type[nn.Module] = nn.ReLU,scale_pixels: bool = True) -> None:
+        super().__init__()
+        self.scale_pixels = scale_pixels
+
+        self.cnn_network: nn.Module = nn.Sequential(
+            self._layer_init_conv_ppo(
+                nn.Conv2d(
+                    in_channels=int(obs_shape[0]),
+                    out_channels=int(num_cells_cnn[0]),
+                    kernel_size=int(kernel_sizes[0]),
+                    stride=int(strides[0]),
+                )
+            ),
+            activation_class(),
+            self._layer_init_conv_ppo(
+                nn.Conv2d(
+                    in_channels=int(num_cells_cnn[0]),
+                    out_channels=int(num_cells_cnn[1]),
+                    kernel_size=int(kernel_sizes[1]),
+                    stride=int(strides[1]),
+                )
+            ),
+            activation_class(),
+            self._layer_init_conv_ppo(
+                nn.Conv2d(
+                    in_channels=int(num_cells_cnn[1]),
+                    out_channels=int(num_cells_cnn[2]),
+                    kernel_size=int(kernel_sizes[2]),
+                    stride=int(strides[2]),
+                )
+            ),
+            activation_class(),
+            nn.Flatten(),
+        )
+        with torch.no_grad():
+            cnn_network_out = self.cnn_network(torch.zeros(1, *obs_shape))
+
+        self.hidden = nn.Sequential(
+            self._layer_init_linear_ppo(
+                nn.Linear(cnn_network_out.shape[-1], hidden_features),
+                std=math.sqrt(2),
+            ),
+            activation_class(),
+        )
+        self.actor = self._layer_init_linear_ppo(
+            nn.Linear(hidden_features, num_actions),
+            std=0.01,
+        )
+        self.critic = self._layer_init_linear_ppo(
+            nn.Linear(hidden_features, 1),
+            std=1.0,
+        )
+
+    def encode(self, obs: torch.Tensor) -> torch.Tensor:
+        if self.scale_pixels:
+            obs = obs / 255.0
+        return self.hidden(self.cnn_network(obs))
+
+    def forward_actor(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.actor(self.encode(obs))
+
+    def forward_critic(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.critic(self.encode(obs))
+
+class PPOActorHead(nn.Module):
+    def __init__(self, actor_critic: NaturePPOActorCritic) -> None:
+        super().__init__()
+        self.actor_critic = actor_critic
+
+    def forward(self, obs:torch.Tensor) -> torch.Tensor:
+        return self.actor_critic.forward_actor(obs)
+
+class PPOCriticHead(nn.Module):
+    def __init__(self, actor_critic: NaturePPOActorCritic) -> None:
+        super().__init__()
+        self.actor_critic = actor_critic
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.actor_critic.forward_critic(obs)
+
+# =========================================
+
+# Factor function for PPO Atari:
+
+def NaturePPOSharedActorCritic(
+    obs_shape: Sequence[int],
+    num_actions: int,
+    *,
+    num_cells_cnn: Sequence[int] = (32, 64, 64),
+    kernel_sizes: Sequence[int] = (8, 4, 3),
+    strides: Sequence[int] = (4, 2, 1),
+    hidden_features: int = 512,
+    activation_class: Type[nn.Module] = nn.ReLU,
+    scale_pixels: bool = True,
+) -> tuple[nn.Module, nn.Module]:
+    actor_critic = NaturePPOActorCritic(
+        obs_shape,
+        num_actions,
+        num_cells_cnn=num_cells_cnn,
+        kernel_sizes=kernel_sizes,
+        strides=strides,
+        hidden_features=hidden_features,
+        activation_class=activation_class,
+        scale_pixels=scale_pixels,
+    )
+    return PPOActorHead(actor_critic), PPOCriticHead(actor_critic)
 
 def _layer_init_mlp_ppo(module: nn.Module,*,final_weight_std: float,
                         hidden_weight_std: float = math.sqrt(2),bias_const: float = 0.0) -> nn.Module:
@@ -91,53 +216,6 @@ def make_mlp_ppo_critic(
     )
     return _layer_init_mlp_ppo(module=mlp, final_weight_std=1.0)
 
-
-def NaturePPOActor(
-    obs_shape: Sequence[int],
-    num_actions: int,
-    *,
-    num_cells_cnn: Sequence[int] = (32, 64, 64),
-    kernel_sizes: Sequence[int] = (8, 4, 3),
-    strides: Sequence[int] = (4, 2, 1),
-    num_cells_mlp: Sequence[int] = (512,),
-    activation_class: Type[nn.Module] = nn.ReLU,
-) -> nn.Module:
-    """Nature-DQN style CNN policy head for pixel-observation PPO.
-
-    Maps stacked Atari frames ``obs_shape`` to categorical action logits.
-    """
-    return _nature_cnn_mlp(
-        obs_shape=obs_shape,
-        out_features=num_actions,
-        num_cells_cnn=num_cells_cnn,
-        kernel_sizes=kernel_sizes,
-        strides=strides,
-        num_cells_mlp=num_cells_mlp,
-        activation_class=activation_class,
-    )
-
-
-def NaturePPOCritic(
-    obs_shape: Sequence[int],
-    num_actions: int,
-    *,
-    num_cells_cnn: Sequence[int] = (32, 64, 64),
-    kernel_sizes: Sequence[int] = (8, 4, 3),
-    strides: Sequence[int] = (4, 2, 1),
-    num_cells_mlp: Sequence[int] = (512,),
-    activation_class: Type[nn.Module] = nn.ReLU,
-) -> nn.Module:
-    """Nature-DQN style CNN value head for pixel-observation PPO."""
-    del num_actions  # signature parity with the actor factory
-    return _nature_cnn_mlp(
-        obs_shape=obs_shape,
-        out_features=1,
-        num_cells_cnn=num_cells_cnn,
-        kernel_sizes=kernel_sizes,
-        strides=strides,
-        num_cells_mlp=num_cells_mlp,
-        activation_class=activation_class,
-    )
 
 
 def make_mlp_q_net(
