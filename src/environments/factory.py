@@ -88,6 +88,12 @@ def _make_gymnasium_env(
     from torchrl.envs import GymEnv, GymWrapper, TransformedEnv
     from torchrl.envs.transforms import Compose
 
+    if name.startswith("ALE/"):
+        import gymnasium as gym
+        import ale_py
+
+        gym.register_envs(ale_py)
+
     backend_ctx = nullcontext()
     if gym_backend is not None:
         from torchrl.envs import set_gym_backend
@@ -97,10 +103,16 @@ def _make_gymnasium_env(
         if gym_wrappers:
             import gymnasium as gym
 
-            raw_env = gym.make(name, **(gym_kwargs or {}))
+            #raw Gymnasium/ALE does not accept categorial_action_encoding
+            gym_make_kwargs = dict(gym_kwargs or {})
+            categorical_action_encoding = bool(
+                gym_make_kwargs.pop("categorical_action_encoding", False)
+            )
+
+            raw_env = gym.make(name, **gym_make_kwargs)
             for wrapper_cfg in gym_wrappers:
                 raw_env = _instantiate_gym_wrapper(raw_env, wrapper_cfg)
-            bese_env = GymWrapper(raw_env, device=device)
+            base_env = GymWrapper(raw_env, device=device, categorical_action_encoding=categorical_action_encoding)
         else:
             base_env = GymEnv(name, device=device, **(gym_kwargs or {}))
 

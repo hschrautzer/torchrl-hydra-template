@@ -1,8 +1,8 @@
 name: ALE/Breakout-v5
 gym_backend: gymnasium
 gym_kwargs:
-  render_modes: rgb_array
-  frame_skip: 1
+  render_mode: rgb_array
+  frameskip: 1
   repeat_action_probability: 0.0
   categorical_action_encoding: true
 

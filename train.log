@@ -2,3 +2,23 @@
 [2026-05-07 14:03:25,101][asyncio][WARNING] - socket.send() raised exception.
 [2026-05-08 08:00:19,089][asyncio][WARNING] - socket.send() raised exception.
 [2026-05-08 08:00:19,090][asyncio][WARNING] - socket.send() raised exception.
+[2026-06-14 15:49:35,579][matplotlib][WARNING] - /Users/hendrikschrautzer/.matplotlib is not a writable directory
+[2026-06-14 15:49:35,580][matplotlib][WARNING] - Matplotlib created a temporary cache directory at /var/folders/dp/j32wtmvj6n9727g16dt5k1rr0000gn/T/matplotlib-ex87t_a0 because there was an issue with the default path (/Users/hendrikschrautzer/.matplotlib); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+[2026-06-14 15:49:40,613][matplotlib.font_manager][WARNING] - Matplotlib is building the font cache; this may take a moment.
+[2026-06-14 15:49:49,231][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+[2026-06-14 15:49:49,248][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 15:49:49,284][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 15:49:49,290][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc: Can not load face (locations (loca) table missing; error code 0x90)
+[2026-06-14 15:49:49,306][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/SFIndia.ttc: Can not load face (SFNT font table missing; error code 0x8e)
+[2026-06-14 15:49:49,331][matplotlib.font_manager][INFO] - generated new fontManager
+[2026-06-14 15:52:14,894][matplotlib][WARNING] - /Users/hendrikschrautzer/.matplotlib is not a writable directory
+[2026-06-14 15:52:14,894][matplotlib][WARNING] - Matplotlib created a temporary cache directory at /var/folders/dp/j32wtmvj6n9727g16dt5k1rr0000gn/T/matplotlib-3ndk2dvx because there was an issue with the default path (/Users/hendrikschrautzer/.matplotlib); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+[2026-06-14 15:52:19,914][matplotlib.font_manager][WARNING] - Matplotlib is building the font cache; this may take a moment.
+[2026-06-14 15:52:28,258][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/SFIndia.ttc: Can not load face (SFNT font table missing; error code 0x8e)
+[2026-06-14 15:52:28,268][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 15:52:28,274][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc: Can not load face (locations (loca) table missing; error code 0x90)
+[2026-06-14 15:52:28,288][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: Could not set the fontsize (invalid pixel size; error code 0x17)
+[2026-06-14 15:52:28,290][matplotlib.font_manager][INFO] - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+[2026-06-14 15:52:28,306][matplotlib.font_manager][INFO] - generated new fontManager
+[2026-06-14 16:16:04,791][matplotlib][WARNING] - /Users/hendrikschrautzer/.matplotlib is not a writable directory
+[2026-06-14 16:16:04,793][matplotlib][WARNING] - Matplotlib created a temporary cache directory at /var/folders/dp/j32wtmvj6n9727g16dt5k1rr0000gn/T/matplotlib-ap16clqb because there was an issue with the default path (/Users/hendrikschrautzer/.matplotlib); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.

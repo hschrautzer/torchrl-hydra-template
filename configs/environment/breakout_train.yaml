@@ -2,7 +2,7 @@ name: ALE/Breakout-v5
 gym_backend: gymnasium
 gym_kwargs:
   render_mode: rgb_array
-  frame_skip: 1 # Frameskip 4 is realized below by the MaxAndSkipEnv wrapper. Do it this way to preserve the pooling
+  frameskip: 1 # Frameskip 4 is realized below by the MaxAndSkipEnv wrapper. Do it this way to preserve the pooling
                 # behavior of the MaxAndSkipEnv wrapper.
   repeat_action_probability: 0.0 # To match the breakout-v4 version used in the blogpost
   categorical_action_encoding: true

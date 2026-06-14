@@ -89,9 +89,14 @@ class NaturePPOActorCritic(nn.Module):
         )
 
     def encode(self, obs: torch.Tensor) -> torch.Tensor:
+        # receives single unbatched Atari observation with shape [4,84,84]
         if self.scale_pixels:
             obs = obs / 255.0
-        return self.hidden(self.cnn_network(obs))
+
+        batch_shape = obs.shape[:-3]
+        obs = obs.reshape(-1,*obs.shape[-3:]) # now [1,4,84,84]
+        cnn_output = self.cnn_network(obs) # [1,3136]
+        return self.hidden(cnn_output) # [512]
 
     def forward_actor(self, obs: torch.Tensor) -> torch.Tensor:
         return self.actor(self.encode(obs))

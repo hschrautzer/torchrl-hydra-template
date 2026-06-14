@@ -292,6 +292,16 @@ class PPO(BaseAlgorithm):
         batch: TensorDict = batch.to(self.device)
         # Compte GAE first -> then flatten for minibatches
 
+        if self._obs_key == "pixels":
+            pixels = batch[self._obs_key]
+            print(
+                "pixels:",
+                "dtype=", pixels.dtype,
+                "shape=", tuple(pixels.shape),
+                "min=", pixels.min().item(),
+                "max=", pixels.max().item(),
+            )
+
         # Compute fixed old values, advantages, and value targets before updating.
         # GAE writes "advantage", "value_target", and "state_value" in the tensordict batch
         with torch.no_grad():

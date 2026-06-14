@@ -4,25 +4,14 @@ _target_: src.algorithms.ppo.PPO
 obs_key: pixels
 
 # Nature-DQN style CNN -> logits policy head.
-actor_network:
+actor_critic_network:
   _partial_: true
-  _target_: src.networks.NaturePPOActor
+  _target_: src.networks.NaturePPOSharedActorCritic
   num_cells_cnn: [32, 64, 64]
   kernel_sizes: [8, 4, 3]
   strides: [4, 2, 1]
-  num_cells_mlp: [512]
-  activation_class:
-    _target_: hydra.utils.get_class
-    path: torch.nn.ReLU
-
-# Nature-DQN style CNN -> scalar state-value head.
-critic_network:
-  _partial_: true
-  _target_: src.networks.NaturePPOCritic
-  num_cells_cnn: [32, 64, 64]
-  kernel_sizes: [8, 4, 3]
-  strides: [4, 2, 1]
-  num_cells_mlp: [512]
+  hidden_features: 512
+  scale_pixels: true
   activation_class:
     _target_: hydra.utils.get_class
     path: torch.nn.ReLU
