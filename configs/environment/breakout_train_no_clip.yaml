@@ -1,0 +1,38 @@
+name: ALE/Breakout-v5
+gym_backend: gymnasium
+gym_kwargs:
+  render_mode: rgb_array
+  frameskip: 1 # Frameskip 4 is realized below by the MaxAndSkipEnv wrapper. Do it this way to preserve the pooling
+                # behavior of the MaxAndSkipEnv wrapper.
+  repeat_action_probability: 0.0 # To match the breakout-v4 version used in the blogpost
+  categorical_action_encoding: true
+gym_wrappers: # Wrappers according to Atari Blogpost: 37 implementation details...
+  - _target_: stable_baselines3.common.atari_wrappers.NoopResetEnv # previously done by torchrl.envs.NoopResetEnv
+    noop_max: 30
+  - _target_: stable_baselines3.common.atari_wrappers.MaxAndSkipEnv
+    skip: 4
+  - _target_: src.environments.gym_wrappers.RawEpisodeStatistics
+  - _target_: stable_baselines3.common.atari_wrappers.EpisodicLifeEnv # previously done by torchrl.envs.EndOfLifeTransform
+  - _target_: stable_baselines3.common.atari_wrappers.FireResetEnv
+
+# PPO Atari training stack. Keeps actions categorical/int to match
+# torch.distributions.Categorical in src.algorithms.ppo.PPO.
+# HS: Removed some of the transforms, which are now taken care of in the env-wrappers above.
+transforms:
+  - _target_: torchrl.envs.ToTensorImage
+  - _target_: torchrl.envs.GrayScale
+  - _target_: torchrl.envs.Resize
+    w: 84
+    h: 84
+  - _target_: torchrl.envs.CatFrames
+    N: 4
+    dim: -3
+  - _target_: torchrl.envs.RewardSum
+  - _target_: torchrl.envs.StepCounter
+    max_steps: 4500
+  - _target_: torchrl.envs.DoubleToFloat
+
+gym_info_keys:
+  - raw_episode_return
+  - raw_episode_length
+  - raw_episode_done
